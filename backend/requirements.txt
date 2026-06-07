@@ -1,0 +1,8 @@
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.30,<0.31
+pydantic>=2.10,<3
+pydantic-settings>=2.6,<3
+openai>=1.57,<2
+qdrant-client>=1.13,<1.14
+python-dotenv>=1.0,<2
+pytest>=8.3,<9
