@@ -12,6 +12,13 @@ class SourceSnippet(BaseModel):
     chunk_id: str
     score: float
     excerpt: str
+    citation: str = ""
+
+
+class AgentStep(BaseModel):
+    name: str
+    status: str
+    detail: str
 
 
 class AskRequest(BaseModel):
@@ -23,6 +30,7 @@ class AskResponse(BaseModel):
     answer: str
     sources: list[SourceSnippet]
     warnings: list[BoundaryWarning]
+    agent_steps: list[AgentStep] = Field(default_factory=list)
 
 
 class IngestResponse(BaseModel):

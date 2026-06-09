@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 
 import type { AskResponse } from "../types";
+import AgentTrace from "./AgentTrace";
 import SourceList from "./SourceList";
 
 type AnswerCardProps = {
@@ -57,6 +58,7 @@ export default function AnswerCard({ response, loading }: AnswerCardProps) {
         ))}
       </div>
 
+      <AgentTrace steps={response.agent_steps} />
       <SourceList sources={response.sources} />
     </section>
   );

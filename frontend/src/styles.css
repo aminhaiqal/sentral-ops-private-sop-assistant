@@ -231,6 +231,7 @@ textarea:focus {
 
 .answer-body h2,
 .source-list h2,
+.trace-heading h2,
 .panel-heading h2 {
   margin: 0;
   font-size: 16px;
@@ -245,6 +246,72 @@ textarea:focus {
 .answer-body p {
   margin: 0 0 10px;
   line-height: 1.58;
+}
+
+.agent-trace {
+  border-bottom: 1px solid #e4e0d7;
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.trace-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.trace-heading svg {
+  color: #22594d;
+}
+
+.agent-trace ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.trace-step {
+  min-height: 58px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid #d8e3e7;
+  border-radius: 8px;
+  background: #f4f9fb;
+}
+
+.trace-step svg {
+  color: #266f86;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.trace-step strong {
+  display: block;
+  color: #28363c;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.trace-step p {
+  margin: 0;
+  color: #4f5d63;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.warning-step {
+  background: #fff8e8;
+  border-color: #ecd59a;
+}
+
+.warning-step svg {
+  color: #9c681f;
 }
 
 .source-list {
@@ -275,6 +342,20 @@ textarea:focus {
   margin: 0 0 3px;
   font-size: 14px;
   line-height: 1.3;
+}
+
+.citation-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: #e7f1ed;
+  color: #22594d;
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: middle;
 }
 
 .source-heading span {

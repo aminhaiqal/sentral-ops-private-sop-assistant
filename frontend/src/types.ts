@@ -9,12 +9,20 @@ export type SourceSnippet = {
   chunk_id: string;
   score: number;
   excerpt: string;
+  citation: string;
+};
+
+export type AgentStep = {
+  name: string;
+  status: string;
+  detail: string;
 };
 
 export type AskResponse = {
   answer: string;
   sources: SourceSnippet[];
   warnings: BoundaryWarning[];
+  agent_steps: AgentStep[];
 };
 
 export type DemoQuestion = {

@@ -1,8 +1,11 @@
 # Sentral Ops Private SOP Assistant
 
-A proof-of-capability demo for Axelyn.
+A proof-of-capability demo for Axelyn and a prepared response for **Assessment Question 1:
+Agentic RAG**.
 
-This project shows how approved internal company documents can become a controlled AI assistant that answers staff questions with source-backed responses and sensible operational boundaries.
+This project shows how approved internal company documents can become a controlled AI
+assistant that answers staff questions with source-backed responses, sensible operational
+boundaries, and an inspectable agentic retrieval workflow.
 
 The company data is fictional. It represents **Sentral Ops Supply Sdn. Bhd.**, a fictional B2B operations and facilities supply company in Klang Valley, Malaysia.
 
@@ -11,6 +14,8 @@ The company data is fictional. It represents **Sentral Ops Supply Sdn. Bhd.**, a
 - Staff can ask internal operations questions in a simple web UI.
 - Answers are generated only from approved markdown SOP documents.
 - Each answer returns the source snippets used.
+- The backend plans focused retrieval queries, runs multi-query vector search, deduplicates
+  chunks, checks source sufficiency, and exposes an Agent Trace in the UI.
 - Boundary-sensitive questions are flagged, including live delivery status, payment confirmation, stock availability, confidential data, and final approval authority.
 - The implementation is intentionally small: FastAPI, Qdrant, OpenAI, and Vite React.
 
@@ -22,6 +27,11 @@ The company data is fictional. It represents **Sentral Ops Supply Sdn. Bhd.**, a
 - Vite + React + TypeScript frontend
 - Docker Compose for local development and client demo runtime
 - Production-style frontend container: static React build served by Nginx
+
+## Assessment Guide
+
+See [ASSESSMENT_GUIDE.md](ASSESSMENT_GUIDE.md) for the demo script, Agentic RAG
+investigation, traditional RAG comparison, implementation flow, and test methodology.
 
 ## Quick Start
 
@@ -64,6 +74,16 @@ curl http://localhost:5173/health
 ## Retrieval Controls
 
 The assistant rejects weak matches before answer generation. If no retrieved SOP chunk reaches `MIN_SOURCE_SCORE`, the API returns an `outside_scope` warning and does not send low-relevance snippets to the model.
+
+The agentic retrieval workflow:
+
+- Checks boundaries before retrieval.
+- Builds up to three retrieval queries from the original question and detected intent.
+- Embeds planned queries in one batch.
+- Searches Qdrant for each query.
+- Deduplicates chunks and keeps the best score.
+- Adds citation labels such as `S1` and `S2`.
+- Sends only threshold-passing excerpts to the answer model.
 
 Default controls:
 
@@ -123,8 +143,10 @@ The assistant does not confirm live status, make final approvals, expose confide
 
 The current implementation is ready for a controlled client proof demo:
 
-- Source-backed RAG over approved fictional SOP markdown files.
+- Agentic, source-backed RAG over approved fictional SOP markdown files.
 - Explicit boundary warnings for live ETA, payment confirmation, confidential data, public AI use, substitution, stock, and approval authority.
+- Frontend Agent Trace showing boundary check, query planning, retrieval, grounding check, and answer synthesis.
+- Citation-backed answers with matching source cards.
 - Out-of-scope rejection using retrieval score thresholds.
 - Dockerized backend, frontend, and Qdrant.
 - Non-root backend container user.

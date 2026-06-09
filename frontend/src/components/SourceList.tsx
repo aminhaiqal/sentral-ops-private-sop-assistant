@@ -18,7 +18,10 @@ export default function SourceList({ sources }: SourceListProps) {
             <div className="source-heading">
               <FileText size={18} />
               <div>
-                <h3>{source.title}</h3>
+                <h3>
+                  {source.citation && <span className="citation-badge">{source.citation}</span>}
+                  {source.title}
+                </h3>
                 <span>
                   {source.document_id} · {source.chunk_id} · {(source.score * 100).toFixed(0)}%
                 </span>
