@@ -1,42 +1,32 @@
-import { Loader2, Send } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ArrowUp, Loader2, Paperclip } from "lucide-react";
 
-type QuestionInputProps = {
-  value: string;
-  loading: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-};
+type Props = { value: string; loading: boolean; uploading: boolean; onChange: (value: string) => void;
+  onSubmit: () => void; onAttach: () => void };
 
-export default function QuestionInput({
-  value,
-  loading,
-  onChange,
-  onSubmit
-}: QuestionInputProps) {
+export default function QuestionInput({ value, loading, uploading, onChange, onSubmit, onAttach }: Props) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!field.current) return;
+    field.current.style.height = "auto";
+    field.current.style.height = `${Math.min(field.current.scrollHeight, 180)}px`;
+  }, [value]);
   return (
-    <form
-      className="question-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <label className="field-label" htmlFor="question">
-        Staff question
-      </label>
-      <textarea
-        id="question"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="What is required before issuing a credit note?"
-        rows={5}
-      />
-      <div className="form-actions">
-        <button type="submit" className="primary-button" disabled={loading || value.trim().length < 3}>
-          {loading ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
-          <span>{loading ? "Checking" : "Ask"}</span>
-        </button>
-      </div>
+    <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+      <button className="icon-button attach-button" type="button" onClick={onAttach}
+        aria-label="Upload documents" title="Upload PDF or Markdown" disabled={uploading}>
+        {uploading ? <Loader2 size={21} className="spin" /> : <Paperclip size={21} />}
+      </button>
+      <textarea ref={field} aria-label="Message Sentral" value={value} rows={1} maxLength={800}
+        onChange={(event) => onChange(event.target.value)} placeholder="Ask about your documents"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault(); if (!loading && value.trim().length >= 3) onSubmit();
+          }
+        }} />
+      <button type="submit" className="send-button" aria-label="Send message" disabled={loading || value.trim().length < 3}>
+        {loading ? <Loader2 size={20} className="spin" /> : <ArrowUp size={22} strokeWidth={2.3} />}
+      </button>
     </form>
   );
 }

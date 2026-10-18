@@ -33,16 +33,19 @@ class QdrantStore:
         result = self.client.count(
             collection_name=self.settings.qdrant_collection,
             exact=True,
+            count_filter=visible_sources(None),
         )
         return int(result.count)
 
-    def upsert_chunks(self, chunks: list[DocumentChunk], embeddings: list[list[float]]) -> None:
+    def upsert_chunks(self, chunks: list[DocumentChunk], embeddings: list[list[float]],
+                      workspace_id: str | None = None) -> None:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length.")
 
         points: list[models.PointStruct] = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
-            point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.chunk_id))
+            point_key = f"{workspace_id}:{chunk.chunk_id}" if workspace_id else chunk.chunk_id
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, point_key))
             points.append(
                 models.PointStruct(
                     id=point_id,
@@ -52,6 +55,7 @@ class QdrantStore:
                         "title": chunk.title,
                         "chunk_id": chunk.chunk_id,
                         "text": chunk.text,
+                        **({"workspace_id": workspace_id} if workspace_id else {}),
                     },
                 )
             )
@@ -63,13 +67,15 @@ class QdrantStore:
                 wait=True,
             )
 
-    def search(self, query_embedding: list[float], limit: int) -> list[SourceSnippet]:
+    def search(self, query_embedding: list[float], limit: int,
+               workspace_id: str | None = None) -> list[SourceSnippet]:
         self.ensure_collection()
         response = self.client.query_points(
             collection_name=self.settings.qdrant_collection,
             query=query_embedding,
             limit=limit,
             with_payload=True,
+            query_filter=visible_sources(workspace_id),
         )
 
         snippets: list[SourceSnippet] = []
@@ -86,6 +92,28 @@ class QdrantStore:
                 )
             )
         return snippets
+
+    def delete_document(self, document_id: str, workspace_id: str) -> None:
+        if not self.client.collection_exists(self.settings.qdrant_collection):
+            return
+        self.client.delete(
+            collection_name=self.settings.qdrant_collection,
+            points_selector=models.FilterSelector(filter=models.Filter(must=[
+                models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
+                models.FieldCondition(key="document_id", match=models.MatchValue(value=document_id)),
+            ])),
+            wait=True,
+        )
+
+
+def visible_sources(workspace_id: str | None) -> models.Filter:
+    public = models.IsEmptyCondition(is_empty=models.PayloadField(key="workspace_id"))
+    if not workspace_id:
+        return models.Filter(must=[public])
+    return models.Filter(should=[
+        public,
+        models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
+    ])
 
 
 def _excerpt(text: str, max_chars: int = 1800) -> str:

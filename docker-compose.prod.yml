@@ -1,0 +1,89 @@
+name: sentral
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "bash", "-c", ":> /dev/tcp/127.0.0.1/6333"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    logging: *default-logging
+
+  backend:
+    image: sentral/backend:${SENTRAL_RELEASE:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      BACKEND_CORS_ORIGINS: https://sentral.axelyn.com
+      AUTO_INGEST_ON_STARTUP: "true"
+      WORKSPACE_COOKIE_SECURE: "true"
+    restart: unless-stopped
+    init: true
+    mem_limit: 512m
+    cpus: 0.75
+    networks:
+      - backend
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: *default-logging
+
+  frontend:
+    image: sentral/frontend:${SENTRAL_RELEASE:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ""
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.25
+    networks:
+      backend:
+      public:
+        aliases:
+          - sentral_frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+
+volumes:
+  qdrant_storage:
+
+networks:
+  backend:
+  public:
+    external: true
+    name: memora_public

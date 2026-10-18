@@ -42,3 +42,30 @@ export type IngestResponse = {
   chunks: number;
   collection: string;
 };
+
+export type UploadedDocument = {
+  id: string;
+  filename: string;
+  title: string;
+  size_bytes: number;
+  uploaded_at: string;
+  status: "saved" | "indexed";
+  chunks: number;
+  pages: number | null;
+  indexing_error: string | null;
+};
+
+export type DocumentLibrary = {
+  documents: UploadedDocument[];
+  storage_configured: boolean;
+  demo_documents: number;
+};
+
+export type ConversationTurn = { role: "user" | "assistant"; content: string };
+export type ChatMessage = ConversationTurn & {
+  id: string;
+  response?: AskResponse;
+  pending?: boolean;
+  error?: string;
+};
+export type Chat = { id: string; title: string; updatedAt: number; messages: ChatMessage[] };
