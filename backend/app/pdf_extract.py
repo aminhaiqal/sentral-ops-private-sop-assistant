@@ -1,4 +1,5 @@
-"""Run PDF parsing in a separate process with a memory and CPU budget."""
+"""Run PDF parsing with CPU limits and a Linux address-space limit."""
+
 import io
 import json
 import sys
@@ -22,14 +23,18 @@ def extract_pdf(data: bytes) -> dict:
         parts.append(text)
     text = "\n\n".join(parts).strip()
     if not text:
-        raise ValueError("This PDF has no selectable text. Upload a text-based PDF or Markdown file.")
+        raise ValueError(
+            "This PDF has no selectable text. Upload a text-based PDF or Markdown file."
+        )
     return {"text": text, "pages": len(reader.pages)}
 
 
 if __name__ == "__main__":
     import resource
 
-    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+    # macOS does not support this address-space cap. Docker runs the Linux path.
+    if sys.platform == "linux":
+        resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_CPU, (20, 20))
     try:
         print(json.dumps(extract_pdf(sys.stdin.buffer.read(10 * 1024 * 1024 + 1))))

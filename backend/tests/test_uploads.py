@@ -11,7 +11,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from qdrant_client import QdrantClient
 
 from app.chunking import DocumentChunk
-from app.config import Settings
+from app.config import PROJECT_ROOT, Settings
 from app.qdrant_store import QdrantStore
 from app.uploads import extract_document
 
@@ -43,9 +43,16 @@ def upload_app(monkeypatch):
     import app.uploads as uploads
     import app.workspaces as workspaces
 
-    settings = Settings(_env_file=None, openai_api_key=None, auto_ingest_on_startup=False,
-                        r2_endpoint="https://example.r2.cloudflarestorage.com", r2_bucket="test",
-                        r2_access_key_id="test", r2_secret_access_key="test", max_upload_bytes=2048)
+    settings = Settings(
+        _env_file=None,
+        openai_api_key=None,
+        auto_ingest_on_startup=False,
+        r2_endpoint="https://example.r2.cloudflarestorage.com",
+        r2_bucket="test",
+        r2_access_key_id="test",
+        r2_secret_access_key="test",
+        max_upload_bytes=2048,
+    )
     storage = MemoryS3()
     monkeypatch.setattr(main, "get_settings", lambda: settings)
     monkeypatch.setattr(workspaces, "get_settings", lambda: settings)
@@ -60,7 +67,9 @@ def test_upload_saves_original_when_indexing_is_unavailable_and_isolates_browser
         library = owner.get("/api/documents")
         assert "HttpOnly" in library.headers["set-cookie"]
         assert library.json()["documents"] == []
-        result = owner.post("/api/documents", files={"file": ("drill.md", content, "text/markdown")})
+        result = owner.post(
+            "/api/documents", files={"file": ("drill.md", content, "text/markdown")}
+        )
         assert result.status_code == 201
         document = result.json()
         assert document["status"] == "saved"
@@ -73,21 +82,34 @@ def test_upload_saves_original_when_indexing_is_unavailable_and_isolates_browser
         assert response.headers["cache-control"] == "private, no-store"
         assert stranger.get("/api/documents").json()["documents"] == []
         for method, suffix in [("get", "download"), ("post", "index")]:
-            assert getattr(stranger, method)(f"/api/documents/{document['id']}/{suffix}").status_code == 404
+            assert (
+                getattr(stranger, method)(f"/api/documents/{document['id']}/{suffix}").status_code
+                == 404
+            )
         assert stranger.delete(f"/api/documents/{document['id']}").status_code == 404
-        assert owner.post("/api/documents", headers={"Origin": "https://another-site.example"},
-                          files={"file": ("drill.md", content)}).status_code == 403
+        assert (
+            owner.post(
+                "/api/documents",
+                headers={"Origin": "https://another-site.example"},
+                files={"file": ("drill.md", content)},
+            ).status_code
+            == 403
+        )
 
 
 def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypatch):
     import app.uploads as uploads
+
     app, settings, storage = upload_app
     vectors = QdrantStore.__new__(QdrantStore)
     vectors.settings = settings
     vectors.client = QdrantClient(":memory:")
     monkeypatch.setattr(uploads, "QdrantStore", lambda settings: vectors)
     with TestClient(app) as browser:
-        doc = browser.post("/api/documents", files={"file": ("policy.md", b"# Policy\n\nRefunds require a receipt.")}).json()
+        doc = browser.post(
+            "/api/documents",
+            files={"file": ("policy.md", b"# Policy\n\nRefunds require a receipt.")},
+        ).json()
         assert doc["status"] == "saved"
 
         class AvailableEmbeddings:
@@ -102,7 +124,10 @@ def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypa
         assert indexed["status"] == "indexed"
         assert indexed["chunks"] == 1
         assert indexed["indexing_error"] is None
-        again = browser.post("/api/documents", files={"file": ("policy.md", b"# Policy\n\nRefunds require a receipt.")}).json()
+        again = browser.post(
+            "/api/documents",
+            files={"file": ("policy.md", b"# Policy\n\nRefunds require a receipt.")},
+        ).json()
         assert again["id"] == doc["id"]
         assert vectors.client.count(settings.qdrant_collection).count == 1
         assert browser.delete(f"/api/documents/{doc['id']}").status_code == 204
@@ -110,11 +135,14 @@ def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypa
         assert not storage.objects
 
 
-@pytest.mark.parametrize("status,code,expected_action", [
-    (401, "invalid_api_key", "API key was rejected"),
-    (429, "insufficient_quota", "credits and limits"),
-    (402, 402, "credits and limits"),
-])
+@pytest.mark.parametrize(
+    "status,code,expected_action",
+    [
+        (401, "invalid_api_key", "API key was rejected"),
+        (429, "insufficient_quota", "credits and limits"),
+        (402, 402, "credits and limits"),
+    ],
+)
 def test_provider_error_keeps_upload_safe_and_retry_recovers(
     upload_app, monkeypatch, caplog, status, code, expected_action
 ):
@@ -129,7 +157,9 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
     secret = "sk-private-value-must-never-appear"
     error = APIStatusError(
         "Rejected credential " + secret,
-        response=httpx.Response(status, request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")),
+        response=httpx.Response(
+            status, request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+        ),
         body={"code": code, "message": "Rejected credential " + secret},
     )
 
@@ -176,10 +206,16 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
         assert vectors.client.count(settings.qdrant_collection).count == 1
 
 
-@pytest.mark.parametrize("filename,content", [
-    ("bad.txt", b"text"), ("fake.pdf", b"not a PDF"), ("binary.md", b"\0data"),
-    ("empty.md", b"  "), ("encoding.md", b"\xff\xfe"),
-])
+@pytest.mark.parametrize(
+    "filename,content",
+    [
+        ("bad.txt", b"text"),
+        ("fake.pdf", b"not a PDF"),
+        ("binary.md", b"\0data"),
+        ("empty.md", b"  "),
+        ("encoding.md", b"\xff\xfe"),
+    ],
+)
 def test_invalid_files_are_rejected_before_storage(upload_app, filename, content):
     app, _, storage = upload_app
     with TestClient(app) as browser:
@@ -199,10 +235,21 @@ def test_upload_size_limit_is_enforced_before_storage(upload_app):
 def test_pdf_text_extraction_and_password_protection():
     writer = PdfWriter()
     page = writer.add_blank_page(width=300, height=200)
-    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): DictionaryObject({
-        NameObject("/F1"): DictionaryObject({NameObject("/Type"): NameObject("/Font"),
-            NameObject("/Subtype"): NameObject("/Type1"), NameObject("/BaseFont"): NameObject("/Helvetica")})
-    })})
+    page[NameObject("/Resources")] = DictionaryObject(
+        {
+            NameObject("/Font"): DictionaryObject(
+                {
+                    NameObject("/F1"): DictionaryObject(
+                        {
+                            NameObject("/Type"): NameObject("/Font"),
+                            NameObject("/Subtype"): NameObject("/Type1"),
+                            NameObject("/BaseFont"): NameObject("/Helvetica"),
+                        }
+                    )
+                }
+            )
+        }
+    )
     stream = DecodedStreamObject()
     stream.set_data(b"BT /F1 12 Tf 30 150 Td (The emergency drill starts at 9 AM.) Tj ET")
     page[NameObject("/Contents")] = writer._add_object(stream)
@@ -216,6 +263,26 @@ def test_pdf_text_extraction_and_password_protection():
     writer.write(encrypted)
     with pytest.raises(ValueError, match="password protected"):
         extract_document("locked.pdf", encrypted.getvalue())
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "01-visitor-registration.pdf",
+        "02-it-equipment-loans.pdf",
+        "03-warehouse-cycle-counts.pdf",
+        "04-meeting-room-bookings.pdf",
+    ],
+)
+def test_sample_pdf_extracts_outside_backend_directory(filename, tmp_path, monkeypatch):
+    content = (PROJECT_ROOT / "sample-uploads" / filename).read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    text, pages = extract_document(filename, content)
+
+    assert pages == 1
+    assert len(text) > 100
+    assert "Sentral Ops" in text
 
 
 def test_vector_search_never_returns_another_workspaces_uploads():

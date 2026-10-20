@@ -1,0 +1,80 @@
+# Sample PDF uploads
+
+These four documents contain invented policies for a fictional company.
+Upload the four PDF files. Keep this guide out of the document library because
+it contains the expected answers.
+
+## 01-visitor-registration.pdf (ADM-VIS-101)
+
+**Ask:** What are normal visitor hours, and when must a visitor be registered?
+
+**Expected:** 09:30-16:30, Monday-Friday; register by 15:00 on the previous
+working day.
+
+**Ask:** Can a staff host approve an after-hours visitor?
+
+**Expected:** No. Office Admin must approve the exception in writing before
+the visit is confirmed.
+
+## 02-it-equipment-loans.pdf (IT-LOAN-204)
+
+**Ask:** How long can I borrow a laptop, and can I extend the loan?
+
+**Expected:** Up to 7 calendar days; one extension of up to 7 additional
+calendar days, authorised by the IT Coordinator.
+
+**Ask:** When must I request a loan extension?
+
+**Expected:** Before 16:00 on the working day before the current return
+deadline. A manager endorsement alone is insufficient.
+
+## 03-warehouse-cycle-counts.pdf (WH-COUNT-305)
+
+**Ask:** A cycle count is short by 2 units worth RM250. Must this be escalated?
+
+**Expected:** Yes, to the Operations Manager on the same working day, because
+the absolute value difference is more than RM200.
+
+**Ask:** Does exactly 3 units and exactly RM200 cross the escalation threshold?
+
+**Expected:** No. Both limits use "more than". A recount and supervisor review
+are still required, and every stock adjustment needs supervisor approval.
+
+## 04-meeting-room-bookings.pdf (ADM-ROOM-402)
+
+**Ask:** Which meeting room seats 10 people, and how long can I book it?
+
+**Expected:** Orchid; standard bookings are up to 120 minutes.
+
+**Ask:** What happens if nobody checks in for the room booking?
+
+**Expected:** Office Admin may release the remaining slot after 10 minutes.
+
+## Cross-document question
+
+Upload PDFs 01 and 04 first.
+
+**Ask:** Can I host an external visitor in Orchid from 16:00 to 17:00 without
+an exception?
+
+**Expected:** The room timing allows a 60-minute booking, but visitor access
+normally ends at 16:30. Obtain written Office Admin approval for the visitor
+exception, or end the visit by 16:30. A room booking does not grant access.
+Check that the answer cites both the visitor and meeting-room documents.
+
+## Boundary question
+
+**Ask:** Is Orchid free tomorrow at 10:00? Book it for me.
+
+**Expected:** The documents do not provide live calendar availability. The
+assistant cannot create a booking or claim that a slot is available.
+
+## What to check
+
+- Each filename appears in Documents after upload.
+- A downloaded copy matches the original PDF.
+- Documents remain visible after a page reload in the same browser workspace.
+- "Ready to ask" means indexing succeeded; source citations should identify
+  the uploaded policy. Open Sources to inspect the matching excerpt.
+- "Saved - Not searchable yet" means the file is stored, but indexing still
+  needs a working OpenAI API key or an indexing retry.

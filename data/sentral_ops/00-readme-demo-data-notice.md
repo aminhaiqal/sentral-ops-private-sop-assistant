@@ -1,42 +1,36 @@
-# Demo Data Notice
+# Fictional Sample Data Notice
 
-**Owner:** Axelyn Proof Lab  
-**Version:** 1.0  
-**Last Reviewed:** 2026-05-20  
-**Classification:** Internal Use Only  
+**Owner:** Sentral Ops contributors
 
-## Demo Label
+**Version:** 1.1
 
-Fictional demo company data created for Axelyn Proof Lab.
+**Last Reviewed:** 2026-10-20
+
+**Classification:** Public fictional sample data
 
 ## Purpose
 
-This document set is provided only to demonstrate the Sentral Ops Private SOP Assistant. It shows how approved internal documents can be indexed into a private assistant that answers staff questions with source-backed responses and operational boundaries.
+This corpus accompanies the open-source Sentral Ops SOP Assistant. It lets people learn
+how document retrieval, citations, and operational boundaries work without using real
+internal documents.
 
-Sentral Ops Supply Sdn. Bhd. is a fictional company. The policies, customers, order scenarios, team structure, document owners, and business details in this repository are fictional and must not be presented as information from a real client.
+Sentral Ops Supply Sdn. Bhd. is a fictional company. Its policies, customers, order
+scenarios, team structure, document owners, and business details are invented. The
+sample data does not describe a real client or establish any relationship with a
+similarly named company.
 
-## Permitted Use
+## Reuse
 
-This data may be used for:
+These documents are included under the repository's MIT license. You may use, adapt,
+and contribute to them for learning, demonstrations, tests, and experiments. Preserve
+the fictional-data label when presenting the examples.
 
-- Demonstrating controlled AI retrieval over approved internal documents.
-- Showing how an assistant can cite internal source material.
-- Testing boundary handling for live status, payment confirmation, stock availability, confidential data, and approval authority.
-- Explaining Axelyn's private internal AI capability to prospective clients.
+Other documents use "Internal Use Only" labels to simulate real company SOPs. Those
+labels are part of the fictional scenario, not restrictions on this public corpus.
 
-## Prohibited Use
+## Assistant behavior
 
-This data must not be used to:
-
-- Represent Sentral Ops Supply Sdn. Bhd. as a real customer or legal entity.
-- Train or evaluate systems as if this were production company data.
-- Create invoices, customer records, payment claims, or delivery commitments.
-- Suggest that Axelyn has permission from any real company with a similar name.
-
-## Handling Notes
-
-All documents in this folder are fictional but should be handled as if they were internal company material during the demo. This helps demonstrate the user experience expected in a real deployment: staff ask a question, the assistant uses approved sources, and the answer respects operational boundaries.
-
-## AI Assistant Notes
-
-The assistant may state that this is fictional demo data for Axelyn Proof Lab. The assistant must not claim that Sentral Ops Supply Sdn. Bhd. is a real client. If asked whether the data is real, the assistant should answer that it is fictional demo company data created for a proof-of-capability demonstration.
+If asked whether the company or policies are real, explain that they are fictional
+sample data. Do not claim access to real deliveries, bank payments, inventory, customer
+records, or manager approvals. Explain the documented process and direct users to the
+appropriate operational owner for actions outside the assistant's scope.

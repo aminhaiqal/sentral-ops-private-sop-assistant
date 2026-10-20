@@ -37,8 +37,12 @@ class QdrantStore:
         )
         return int(result.count)
 
-    def upsert_chunks(self, chunks: list[DocumentChunk], embeddings: list[list[float]],
-                      workspace_id: str | None = None) -> None:
+    def upsert_chunks(
+        self,
+        chunks: list[DocumentChunk],
+        embeddings: list[list[float]],
+        workspace_id: str | None = None,
+    ) -> None:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length.")
 
@@ -67,8 +71,9 @@ class QdrantStore:
                 wait=True,
             )
 
-    def search(self, query_embedding: list[float], limit: int,
-               workspace_id: str | None = None) -> list[SourceSnippet]:
+    def search(
+        self, query_embedding: list[float], limit: int, workspace_id: str | None = None
+    ) -> list[SourceSnippet]:
         self.ensure_collection()
         response = self.client.query_points(
             collection_name=self.settings.qdrant_collection,
@@ -98,10 +103,18 @@ class QdrantStore:
             return
         self.client.delete(
             collection_name=self.settings.qdrant_collection,
-            points_selector=models.FilterSelector(filter=models.Filter(must=[
-                models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
-                models.FieldCondition(key="document_id", match=models.MatchValue(value=document_id)),
-            ])),
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="workspace_id", match=models.MatchValue(value=workspace_id)
+                        ),
+                        models.FieldCondition(
+                            key="document_id", match=models.MatchValue(value=document_id)
+                        ),
+                    ]
+                )
+            ),
             wait=True,
         )
 
@@ -110,10 +123,12 @@ def visible_sources(workspace_id: str | None) -> models.Filter:
     public = models.IsEmptyCondition(is_empty=models.PayloadField(key="workspace_id"))
     if not workspace_id:
         return models.Filter(must=[public])
-    return models.Filter(should=[
-        public,
-        models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
-    ])
+    return models.Filter(
+        should=[
+            public,
+            models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
+        ]
+    )
 
 
 def _excerpt(text: str, max_chars: int = 1800) -> str:

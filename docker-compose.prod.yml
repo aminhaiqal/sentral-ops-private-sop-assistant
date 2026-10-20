@@ -33,7 +33,7 @@ services:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
-      BACKEND_CORS_ORIGINS: https://sentral.axelyn.com
+      BACKEND_CORS_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN to your hostname}
       AUTO_INGEST_ON_STARTUP: "true"
       WORKSPACE_COOKIE_SECURE: "true"
     restart: unless-stopped
@@ -66,8 +66,6 @@ services:
     networks:
       backend:
       public:
-        aliases:
-          - sentral_frontend
     depends_on:
       backend:
         condition: service_healthy
@@ -79,11 +77,31 @@ services:
       start_period: 10s
     logging: *default-logging
 
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN to your hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - public
+    depends_on:
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *default-logging
+
 volumes:
   qdrant_storage:
+  caddy_data:
+  caddy_config:
 
 networks:
   backend:
   public:
-    external: true
-    name: memora_public

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,8 +18,13 @@ from app.openai_client import OpenAINotConfigured, provider_error_message
 from app.qdrant_store import QdrantStore
 from app.rag import RagAssistant
 from app.schemas import (
-    AskRequest, AskResponse, DemoQuestion, DocumentLibrary, HealthResponse,
-    IngestResponse, UploadedDocument,
+    AskRequest,
+    AskResponse,
+    DemoQuestion,
+    DocumentLibrary,
+    HealthResponse,
+    IngestResponse,
+    UploadedDocument,
 )
 from app.uploads import R2DocumentStore, StorageUnavailable, clean_filename, extract_document
 from app.workspaces import workspace_id
@@ -37,9 +42,13 @@ async def lifespan(app: FastAPI):
                 logger.info("Qdrant collection is empty; ingesting demo documents.")
                 ingest_all(settings)
         except APIStatusError as exc:
-            logger.warning("Startup indexing unavailable: status=%s code=%s", exc.status_code, exc.code)
+            logger.warning(
+                "Startup indexing unavailable: status=%s code=%s", exc.status_code, exc.code
+            )
         except Exception:
-            logger.exception("Automatic ingestion failed. Use POST /api/ingest after fixing config.")
+            logger.exception(
+                "Automatic ingestion failed. Use POST /api/ingest after fixing config."
+            )
     yield
 
 
@@ -58,15 +67,23 @@ app.add_middleware(
 @app.exception_handler(StorageUnavailable)
 async def storage_error(request, exc):
     from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=503, content={"detail": str(exc)},
-                        headers={"Cache-Control": "private, no-store"})
+
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.exception_handler(FileNotFoundError)
 async def missing_document(request, exc):
     from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=404, content={"detail": "Document not found."},
-                        headers={"Cache-Control": "private, no-store"})
+
+    return JSONResponse(
+        status_code=404,
+        content={"detail": "Document not found."},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -122,12 +139,18 @@ def ask(request: AskRequest, workspace: str = Depends(workspace_id)) -> AskRespo
         assistant = RagAssistant(get_settings(), workspace_id=workspace)
         return assistant.ask(request.question, request.top_k, request.history)
     except APIStatusError as exc:
-        logger.warning("Answer provider rejected request: status=%s code=%s", exc.status_code, exc.code)
-        raise HTTPException(status_code=503, detail=provider_error_message(exc) + " Your documents are still saved.") from exc
+        logger.warning(
+            "Answer provider rejected request: status=%s code=%s", exc.status_code, exc.code
+        )
+        raise HTTPException(
+            status_code=503, detail=provider_error_message(exc) + " Your documents are still saved."
+        ) from exc
     except OpenAINotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="The assistant is not available yet. Try again later.") from exc
+        raise HTTPException(
+            status_code=503, detail="The assistant is not available yet. Try again later."
+        ) from exc
     except Exception as exc:
         logger.exception("Question answering failed.")
         raise HTTPException(status_code=502, detail="Question answering failed.") from exc
@@ -157,7 +180,9 @@ async def upload_document(file: UploadFile, workspace: str = Depends(workspace_i
                 raise HTTPException(status_code=413, detail="Choose a file smaller than 10 MB.")
         text, pages = await run_in_threadpool(extract_document, filename, bytes(content))
         store = R2DocumentStore(settings)
-        document = await run_in_threadpool(store.save, workspace, filename, bytes(content), text, pages)
+        document = await run_in_threadpool(
+            store.save, workspace, filename, bytes(content), text, pages
+        )
         return await run_in_threadpool(store.index, workspace, document)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

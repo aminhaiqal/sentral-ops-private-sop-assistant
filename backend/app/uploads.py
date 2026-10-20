@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-from pathlib import Path
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
@@ -19,7 +19,6 @@ from app.config import Settings
 from app.openai_client import OpenAIClient, OpenAINotConfigured, provider_error_message
 from app.qdrant_store import QdrantStore
 from app.schemas import UploadedDocument
-
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,7 @@ def extract_document(filename: str, data: bytes) -> tuple[str, int | None]:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "app.pdf_extract"],
+                cwd=Path(__file__).resolve().parents[1],
                 input=data,
                 capture_output=True,
                 timeout=25,
@@ -49,7 +49,9 @@ def extract_document(filename: str, data: bytes) -> tuple[str, int | None]:
         try:
             parsed = json.loads(result.stdout)
         except (ValueError, UnicodeError) as exc:
-            raise ValueError("This PDF is too complex to read. Try exporting a smaller copy.") from exc
+            raise ValueError(
+                "This PDF is too complex to read. Try exporting a smaller copy."
+            ) from exc
         if result.returncode or "error" in parsed:
             raise ValueError(parsed.get("error", "This PDF could not be read."))
         return parsed["text"], parsed["pages"]
@@ -111,10 +113,14 @@ class R2DocumentStore:
             return getattr(self.client, method)(Bucket=self.settings.r2_bucket, **kwargs)
         except (BotoCoreError, ClientError) as exc:
             if isinstance(exc, ClientError) and exc.response["Error"]["Code"] in {
-                "NoSuchKey", "404", "NotFound"
+                "NoSuchKey",
+                "404",
+                "NotFound",
             }:
                 raise FileNotFoundError("Document not found.") from exc
-            raise StorageUnavailable("Document storage is temporarily unavailable. Try again.") from exc
+            raise StorageUnavailable(
+                "Document storage is temporarily unavailable. Try again."
+            ) from exc
 
     def read(self, key: str) -> bytes:
         response = self.call("get_object", Key=key)
@@ -154,8 +160,9 @@ class R2DocumentStore:
             CacheControl="private, no-store",
         )
 
-    def save(self, workspace: str, filename: str, data: bytes, text: str,
-             pages: int | None) -> UploadedDocument:
+    def save(
+        self, workspace: str, filename: str, data: bytes, text: str, pages: int | None
+    ) -> UploadedDocument:
         document_id = hashlib.sha256(data).hexdigest()[:32]
         try:
             return self.get(workspace, document_id)
@@ -199,31 +206,42 @@ class R2DocumentStore:
             vectors.ensure_collection()
             embeddings = []
             for start in range(0, len(chunks), 32):
-                batch = chunks[start:start + 32]
+                batch = chunks[start : start + 32]
                 embeddings.extend(client.embed_texts([chunk.text for chunk in batch]))
             vectors.upsert_chunks(chunks, embeddings, workspace_id=workspace)
-            document = document.model_copy(update={
-                "status": "indexed", "chunks": len(chunks), "indexing_error": None,
-            })
+            document = document.model_copy(
+                update={
+                    "status": "indexed",
+                    "chunks": len(chunks),
+                    "indexing_error": None,
+                }
+            )
         except APIStatusError as exc:
             logger.warning("Document indexing provider failure: status=%s", exc.status_code)
-            document = document.model_copy(update={
-                "indexing_error": "Saved safely. " + provider_error_message(exc),
-            })
+            document = document.model_copy(
+                update={
+                    "indexing_error": "Saved safely. " + provider_error_message(exc),
+                }
+            )
         except OpenAINotConfigured as exc:
             document = document.model_copy(update={"indexing_error": "Saved safely. " + str(exc)})
         except Exception as exc:
             # Saving the original is independent of embedding-provider availability.
             logger.warning("Document indexing failed: type=%s", type(exc).__name__)
-            document = document.model_copy(update={
-                "indexing_error": "Saved safely. Search is temporarily unavailable; retry indexing later.",
-            })
+            document = document.model_copy(
+                update={
+                    "indexing_error": "Saved safely. Search is temporarily unavailable; retry indexing later.",
+                }
+            )
         self.save_metadata(workspace, document)
         return document
 
     def delete(self, workspace: str, document: UploadedDocument) -> None:
         # A failed vector deletion must not leave searchable text from a removed document.
         QdrantStore(self.settings).delete_document("upload-" + document.id, workspace)
-        for filename in ["original" + Path(document.filename).suffix.lower(),
-                         "content.txt", "metadata.json"]:
+        for filename in [
+            "original" + Path(document.filename).suffix.lower(),
+            "content.txt",
+            "metadata.json",
+        ]:
             self.call("delete_object", Key=self.key(workspace, document.id, filename))

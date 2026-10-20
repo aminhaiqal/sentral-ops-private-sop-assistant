@@ -2,6 +2,13 @@
 .agents
 .codex
 .env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
 
 backend/.venv
 backend/.pytest_cache
@@ -17,3 +24,8 @@ frontend/.vite
 .pytest_cache
 qdrant_storage
 .DS_Store
+.github
+docs
+sample-uploads
+**/*.egg-info
+**/.ruff_cache

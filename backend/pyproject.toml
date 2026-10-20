@@ -1,8 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sentral-ops-private-sop-assistant-backend"
 version = "0.1.0"
-description = "FastAPI RAG backend for the Sentral Ops Private SOP Assistant demo."
+description = "A source-backed SOP assistant for learning retrieval-augmented generation."
 requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.6,<3",
+    "openai>=1.57,<2",
+    "qdrant-client>=1.13,<1.14",
+    "boto3>=1.36,<2",
+    "pypdf>=6.1,<7",
+    "python-multipart>=0.0.20,<0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "httpx>=0.28,<1", "ruff>=0.15,<0.16"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -11,3 +33,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

@@ -4,7 +4,6 @@ import re
 
 from app.schemas import BoundaryWarning
 
-
 BOUNDARY_MESSAGES = {
     "live_delivery_status": (
         "This asks for live delivery status or ETA. The assistant can explain the SOP, "
@@ -40,11 +39,15 @@ BOUNDARY_MESSAGES = {
 RULES: list[tuple[str, re.Pattern[str]]] = [
     (
         "live_delivery_status",
-        re.compile(r"\b(today|now|current|live|eta|arrival|arrive|delivery status|where is)\b", re.I),
+        re.compile(
+            r"\b(today|now|current|live|eta|arrival|arrive|delivery status|where is)\b", re.I
+        ),
     ),
     (
         "payment_confirmation",
-        re.compile(r"\b(payment confirmed|paid|payment status|receipt|bank in|clear(ed)?|ledger)\b", re.I),
+        re.compile(
+            r"\b(payment confirmed|paid|payment status|receipt|bank in|clear(ed)?|ledger)\b", re.I
+        ),
     ),
     (
         "stock_availability",
@@ -69,7 +72,10 @@ RULES: list[tuple[str, re.Pattern[str]]] = [
     ("external_ai", re.compile(r"\b(chatgpt|public ai|external ai|gemini|claude)\b", re.I)),
     (
         "substitution_approval",
-        re.compile(r"\b(substitute|substitution|replace item|alternative item|without customer approval)\b", re.I),
+        re.compile(
+            r"\b(substitute|substitution|replace item|alternative item|without customer approval)\b",
+            re.I,
+        ),
     ),
 ]
 

@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     app_name: str = "Sentral Ops Private SOP Assistant"
@@ -30,14 +32,13 @@ class Settings(BaseSettings):
     workspace_cookie_secure: bool = False
     max_upload_bytes: int = 10 * 1024 * 1024
     backend_cors_origins: str = "http://localhost:5173"
-    data_dir: Path = Field(
-        default_factory=lambda: Path(__file__).resolve().parents[2] / "data" / "sentral_ops"
-    )
+    data_dir: Path = Field(default_factory=lambda: PROJECT_ROOT / "data" / "sentral_ops")
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     @property
@@ -46,7 +47,9 @@ class Settings(BaseSettings):
 
     @property
     def storage_configured(self) -> bool:
-        return all((self.r2_endpoint, self.r2_bucket, self.r2_access_key_id, self.r2_secret_access_key))
+        return all(
+            (self.r2_endpoint, self.r2_bucket, self.r2_access_key_id, self.r2_secret_access_key)
+        )
 
 
 @lru_cache

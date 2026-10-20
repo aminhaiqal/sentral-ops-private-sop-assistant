@@ -1,0 +1,17 @@
+name: Feature or learning improvement
+description: Suggest a focused improvement to the app or its documentation.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain the use case or what is difficult to understand today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested change
+      description: Include alternatives or tradeoffs if useful.
+    validations:
+      required: true

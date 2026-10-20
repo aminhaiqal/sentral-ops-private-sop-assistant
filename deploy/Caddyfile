@@ -1,0 +1,17 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  # Reindex shared documents through the server CLI instead of a public route.
+  @ingestion path /api/ingest
+  respond @ingestion "Use the ingestion CLI on the server." 403
+
+  reverse_proxy frontend:5173
+}

@@ -1,4 +1,4 @@
-FROM node:20-slim AS build
+FROM node:24-slim AS build
 
 WORKDIR /app/frontend
 
@@ -6,7 +6,7 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend/ /app/frontend/
-ARG VITE_API_URL=http://localhost:8000
+ARG VITE_API_URL=""
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 

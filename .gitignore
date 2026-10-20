@@ -1,9 +1,16 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+*.egg-info/
+.coverage
+htmlcov/
+.mypy_cache/
+build/
 
 node_modules/
 dist/
@@ -11,3 +18,10 @@ dist/
 
 qdrant_storage/
 .DS_Store
+*.log
+.idea/
+.vscode/
+*.pem
+*.key
+*.p12
+*.pfx

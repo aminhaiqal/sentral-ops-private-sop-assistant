@@ -3,23 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src index.html vite.config.ts *.json .prettierrc.json",
+    "format:check": "prettier --check src index.html vite.config.ts *.json .prettierrc.json",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "vite": "^6.0.3"
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "prettier": "^3.6.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
   }
 }

@@ -1,6 +1,5 @@
 from app.schemas import DemoQuestion
 
-
 DEMO_QUESTIONS = [
     DemoQuestion(question="What is the refund approval process for damaged goods?"),
     DemoQuestion(question="When should a delivery delay be escalated to Operations Manager?"),
