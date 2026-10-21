@@ -1,4 +1,16 @@
-import type { AskResponse, ConversationTurn, DocumentLibrary, UploadedDocument } from "./types";
+import type {
+  AskResponse,
+  ConversationTurn,
+  DocumentLibrary,
+  UploadedDocument,
+  Bot,
+  BotInput,
+  Task,
+  TaskSummary,
+  Memory,
+  Routine,
+  RoutineInput,
+} from "./types";
 
 const API_URL = import.meta.env?.VITE_API_URL ?? "";
 
@@ -21,7 +33,13 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
-        throw new Error(detail?.detail ?? `Request failed with ${response.status}`);
+        throw new Error(
+          typeof detail?.detail === "string"
+            ? detail.detail
+            : response.status === 422
+              ? "Please check the fields and try again."
+              : `Request failed with ${response.status}`,
+        );
       }
       return response;
     } finally {
@@ -33,6 +51,53 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
     return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
   }
   return {
+    getBots: (): Promise<Bot[]> => request("/api/bots"),
+    starterBots: (): Promise<Bot[]> => request("/api/bots/starter", { method: "POST" }),
+    saveBot: (data: BotInput, id?: string): Promise<Bot> =>
+      request(id ? `/api/bots/${encodeURIComponent(id)}` : "/api/bots", {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data),
+      }),
+    getTasks: (): Promise<TaskSummary[]> => request("/api/tasks"),
+    getTask: (id: string): Promise<Task> => request(`/api/tasks/${encodeURIComponent(id)}`),
+    startTask: (bot_id: string, goal: string): Promise<Task> =>
+      request("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          bot_id,
+          goal,
+          completion_criteria:
+            "Save a useful Markdown document that fulfills the request, cites the available sources and has been read back for verification.",
+        }),
+      }),
+    cancelTask: (id: string): Promise<Task> =>
+      request(`/api/tasks/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    resumeTask: (id: string, message: string): Promise<Task> =>
+      request(`/api/tasks/${encodeURIComponent(id)}/resume`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }),
+    getMemories: (bot: string): Promise<Memory[]> =>
+      request(`/api/bots/${encodeURIComponent(bot)}/memories`),
+    saveMemory: (bot: string, key: string, value: string): Promise<Memory> =>
+      request(`/api/bots/${encodeURIComponent(bot)}/preferences/${encodeURIComponent(key)}`, {
+        method: "PUT",
+        body: JSON.stringify({ value }),
+      }),
+    forgetMemory: (bot: string, id: string): Promise<void> =>
+      request(`/api/bots/${encodeURIComponent(bot)}/memories/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+    getRoutines: (): Promise<Routine[]> => request("/api/routines"),
+    saveRoutine: (data: RoutineInput, id?: string): Promise<Routine> =>
+      request(id ? `/api/routines/${encodeURIComponent(id)}` : "/api/routines", {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data),
+      }),
+    deleteRoutine: (id: string): Promise<void> =>
+      request(`/api/routines/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    runRoutine: (id: string): Promise<Task> =>
+      request(`/api/routines/${encodeURIComponent(id)}/run`, { method: "POST" }),
     askQuestion(question: string, history: ConversationTurn[] = []): Promise<AskResponse> {
       return request("/api/ask", {
         method: "POST",

@@ -1,30 +1,39 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowUpRight,
+  ArrowLeft,
+  ArrowUp,
   BookOpen,
-  FileText,
-  Files,
-  MessageSquare,
-  PanelLeft,
+  ChevronDown,
+  CircleHelp,
+  Info,
+  Loader2,
   Plus,
-  SquarePen,
+  Search,
   X,
 } from "lucide-react";
 import type { ApiClient } from "./api";
-import { readChats, saveChats } from "./chats";
-import AnswerCard from "./components/AnswerCard";
+import type {
+  Bot,
+  DocumentLibrary,
+  Memory,
+  Routine,
+  Task,
+  TaskSummary,
+  UploadedDocument,
+} from "./types";
+import BotAvatar from "./components/BotAvatar";
 import DocumentPanel from "./components/DocumentPanel";
-import QuestionInput from "./components/QuestionInput";
-import type { Chat, ChatMessage, DocumentLibrary, UploadedDocument } from "./types";
+import TaskConversation from "./components/TaskConversation";
+import WorkspaceInspector, { type InspectorView } from "./components/WorkspaceInspector";
+import { BotEditor, MemoryEditor, RoutineEditor } from "./components/WorkspaceEditors";
+import { saveBlob, STATUS, timeLabel, WORKING } from "./workspace";
 
-const SUGGESTIONS = [
-  {
-    label: "Explain the refund process",
-    question: "What is the refund approval process for damaged goods?",
-  },
-  { label: "Handle a delayed delivery", question: "When should a delivery delay be escalated?" },
-  { label: "Check the AI usage policy", question: "Can staff paste invoice data into ChatGPT?" },
-];
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Something went wrong. Please try again.";
+type Editor =
+  | { kind: "bot"; bot?: Bot }
+  | { kind: "memory"; memory?: Memory }
+  | { kind: "routine"; routine?: Routine };
 
 export default function App({
   api,
@@ -35,99 +44,255 @@ export default function App({
   storageScope: string;
   accountMenu: ReactNode;
 }) {
-  const { askQuestion, deleteDocument, getDocuments, indexDocument, uploadDocument } = api;
-  const [chats, setChats] = useState<Chat[]>(() => readChats(storageScope));
-  const [activeId, setActiveId] = useState<string | null>(() => chats[0]?.id ?? null);
-  const [question, setQuestion] = useState("");
-  const [asking, setAsking] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [selected, setSelected] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`axelyn:bot:${storageScope}`);
+    } catch {
+      return null;
+    }
+  });
+  const [summaries, setSummaries] = useState<TaskSummary[]>([]);
+  const [details, setDetails] = useState<Record<string, Task>>({});
+  const detailCache = useRef(details);
+  detailCache.current = details;
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [memories, setMemories] = useState<{ bot: string; values: Memory[] }>({
+    bot: "",
+    values: [],
+  });
+  const [memoryError, setMemoryError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [goal, setGoal] = useState("");
+  const [replyId, setReplyId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [mobileChat, setMobileChat] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(() => window.innerWidth >= 1180);
+  const [view, setView] = useState<InspectorView>({ kind: "overview" });
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [help, setHelp] = useState(false);
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const [library, setLibrary] = useState<DocumentLibrary | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [busyDocument, setBusyDocument] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const end = useRef<HTMLDivElement>(null);
-  const active = chats.find((chat) => chat.id === activeId);
-  const messages = active?.messages ?? [];
+  const search = useRef<HTMLInputElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const bot =
+    bots.find((item) => item.id === selected) ??
+    bots.find((item) => /chief/i.test(item.name)) ??
+    bots[0];
+  const botTasks = summaries
+    .filter((task) => task.bot_id === bot?.id)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const replyTask = botTasks.find((task) => task.id === replyId && task.status === "needs_input");
 
-  useEffect(() => {
-    saveChats(storageScope, chats);
-  }, [chats, storageScope]);
-  useEffect(() => {
-    void getDocuments()
-      .then(setLibrary)
-      .catch((error: Error) => setLibraryError(error.message));
-  }, [getDocuments]);
-  useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, asking]);
-  useEffect(() => {
-    function escape(event: KeyboardEvent) {
-      if (event.key === "Escape" && !documentsOpen && window.innerWidth <= 900)
-        setSidebarOpen(false);
-    }
-    window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
-  }, [documentsOpen]);
-
-  function newChat() {
-    setActiveId(null);
-    setQuestion("");
-    if (window.innerWidth <= 900) setSidebarOpen(false);
-  }
-
-  function updateMessage(chatId: string, messageId: string, update: Partial<ChatMessage>) {
-    setChats((current) =>
-      current.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              messages: chat.messages.map((message) =>
-                message.id === messageId ? { ...message, ...update } : message,
-              ),
-            }
-          : chat,
+  const acceptTask = useCallback((task: Task) => {
+    setDetails((current) =>
+      current[task.id]?.updated_at > task.updated_at ? current : { ...current, [task.id]: task },
+    );
+    setSummaries((current) =>
+      [task, ...current.filter((item) => item.id !== task.id)].sort((a, b) =>
+        b.created_at.localeCompare(a.created_at),
       ),
     );
-  }
+  }, []);
 
-  async function submit(nextQuestion = question) {
-    const text = nextQuestion.trim();
-    if (text.length < 3 || asking) return;
-    const chatId = activeId ?? crypto.randomUUID();
-    const assistantId = crypto.randomUUID();
-    const additions: ChatMessage[] = [
-      { id: crypto.randomUUID(), role: "user", content: text },
-      { id: assistantId, role: "assistant", content: "", pending: true },
-    ];
-    const history = messages
-      .filter((message) => !message.pending && !message.error)
-      .slice(-6)
-      .map(({ role, content }) => ({ role, content: content.slice(0, 5000) }));
-    setActiveId(chatId);
-    setQuestion("");
-    setAsking(true);
-    setChats((current) => {
-      const existing = current.find((chat) => chat.id === chatId);
-      const next: Chat = existing
-        ? { ...existing, messages: [...existing.messages, ...additions], updatedAt: Date.now() }
-        : { id: chatId, title: text, updatedAt: Date.now(), messages: additions };
-      return [next, ...current.filter((chat) => chat.id !== chatId)].slice(0, 20);
-    });
-    try {
-      const response = await askQuestion(text, history);
-      updateMessage(chatId, assistantId, { content: response.answer, response, pending: false });
-    } catch (error) {
-      updateMessage(chatId, assistantId, {
-        pending: false,
-        error: error instanceof Error ? error.message : "Unable to answer. Try again.",
+  useEffect(() => {
+    let alive = true,
+      polling = false;
+    async function refresh(initial = false) {
+      if (polling || (!initial && document.hidden)) return;
+      polling = true;
+      const results = await Promise.allSettled([
+        api.getTasks(),
+        api.getRoutines(),
+        ...(initial ? [api.getBots()] : []),
+      ]);
+      if (!alive) return;
+      const [tasksResult, routinesResult, botsResult] = results;
+      if (tasksResult.status === "fulfilled") setSummaries(tasksResult.value as TaskSummary[]);
+      if (routinesResult.status === "fulfilled") setRoutines(routinesResult.value as Routine[]);
+      if (botsResult?.status === "fulfilled") {
+        let profiles = botsResult.value as Bot[];
+        if (!profiles.length) {
+          try {
+            profiles = await api.starterBots();
+          } catch (err) {
+            if (alive) setError(errorMessage(err));
+          }
+        }
+        if (alive) setBots(profiles);
+      }
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") setError(errorMessage(failure.reason));
+      if (initial && alive) setLoaded(true);
+      polling = false;
+    }
+    void refresh(true);
+    void api
+      .getDocuments()
+      .then((value) => {
+        if (alive) setLibrary(value);
+      })
+      .catch((err) => {
+        if (alive) setLibraryError(errorMessage(err));
       });
+    const timer = window.setInterval(() => void refresh(), 3000);
+    const visible = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [api]);
+
+  const taskRevision = botTasks.map((task) => `${task.id}:${task.updated_at}`).join();
+  useEffect(() => {
+    let alive = true;
+    const stale = botTasks.filter(
+      (task) =>
+        !detailCache.current[task.id] ||
+        detailCache.current[task.id].updated_at !== task.updated_at,
+    );
+    void Promise.allSettled(stale.map((task) => api.getTask(task.id))).then((results) => {
+      if (!alive) return;
+      setDetails((current) => {
+        const next = { ...current };
+        for (const result of results)
+          if (result.status === "fulfilled") {
+            const task = result.value;
+            if (!next[task.id] || next[task.id].updated_at <= task.updated_at) next[task.id] = task;
+          }
+        return next;
+      });
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") setError(errorMessage(failure.reason));
+    });
+    return () => {
+      alive = false;
+    };
+    // Only refetch details when the server reports a task change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, taskRevision, bot?.id]);
+
+  const completedRevision = botTasks
+    .filter((task) => task.status === "completed")
+    .map((task) => task.id)
+    .join();
+  useEffect(() => {
+    if (!bot) return;
+    let alive = true;
+    setMemoryError("");
+    void api
+      .getMemories(bot.id)
+      .then((values) => {
+        if (alive) setMemories({ bot: bot.id, values });
+      })
+      .catch((err) => {
+        if (alive) setMemoryError(errorMessage(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api, bot?.id, completedRevision]);
+
+  useEffect(() => {
+    if (view.kind !== "task" || details[view.id]) return;
+    let alive = true;
+    void api
+      .getTask(view.id)
+      .then((task) => {
+        if (alive) setDetails((current) => ({ ...current, [task.id]: task }));
+      })
+      .catch((err) => {
+        if (alive) setError(errorMessage(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api, view, details]);
+  useEffect(() => {
+    if (!bot) return;
+    try {
+      localStorage.setItem(`axelyn:bot:${storageScope}`, bot.id);
+    } catch {
+      /* Private browsing can disable storage. */
+    }
+  }, [bot?.id, storageScope]);
+  useEffect(() => {
+    function keyboard(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault();
+        setMobileChat(false);
+        search.current?.focus();
+      }
+      if (event.key === "Escape" && !editor && !documentsOpen) {
+        setInspectorOpen(false);
+        setHelp(false);
+      }
+    }
+    window.addEventListener("keydown", keyboard);
+    return () => window.removeEventListener("keydown", keyboard);
+  }, [editor, documentsOpen]);
+  useEffect(() => {
+    if (!replyTask) setReplyId(null);
+  }, [replyTask?.id]);
+  useEffect(() => {
+    if (composer.current) {
+      composer.current.style.height = "auto";
+      composer.current.style.height = `${Math.min(composer.current.scrollHeight, 150)}px`;
+    }
+  }, [goal]);
+
+  function selectBot(id: string) {
+    setSelected(id);
+    setMobileChat(true);
+    setGoal("");
+    setReplyId(null);
+    setView({ kind: "overview" });
+    if (window.innerWidth < 1180) setInspectorOpen(false);
+  }
+  function inspect(next: InspectorView) {
+    setView(next);
+    setInspectorOpen(true);
+  }
+  async function action(id: string, work: () => Promise<void>) {
+    if (busy) return;
+    setBusy(id);
+    setError("");
+    try {
+      await work();
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
-      setAsking(false);
+      setBusy(null);
     }
   }
-
+  async function submit() {
+    if (!bot || goal.trim().length < 3 || sending) return;
+    const text = goal.trim();
+    setSending(true);
+    setError("");
+    try {
+      acceptTask(
+        replyTask ? await api.resumeTask(replyTask.id, text) : await api.startTask(bot.id, text),
+      );
+      setGoal("");
+      setReplyId(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSending(false);
+    }
+  }
   function updateDocument(document: UploadedDocument) {
     setLibrary(
       (current) =>
@@ -137,261 +302,427 @@ export default function App({
         },
     );
   }
-  function pickFiles() {
-    setDocumentsOpen(true);
-    fileInput.current?.click();
-  }
   async function uploadFiles(files: File[]) {
     if (!files.length || uploading) return;
     setDocumentsOpen(true);
     setLibraryError(null);
     const errors: string[] = [];
     for (const file of files) {
-      if (!/\.(pdf|md)$/i.test(file.name)) {
-        errors.push(`${file.name}: choose a PDF or Markdown file.`);
-        continue;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        errors.push(`${file.name}: the limit is 10 MB.`);
+      if (!/\.(pdf|md)$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
+        errors.push(`${file.name}: choose a PDF or Markdown file up to 10 MB.`);
         continue;
       }
       setUploading(file.name);
       try {
-        updateDocument(await uploadDocument(file));
-      } catch (error) {
-        errors.push(
-          error instanceof Error
-            ? `${file.name}: ${error.message}`
-            : `Unable to upload ${file.name}.`,
-        );
+        updateDocument(await api.uploadDocument(file));
+      } catch (err) {
+        errors.push(`${file.name}: ${errorMessage(err)}`);
       }
     }
     setUploading(null);
-    setLibraryError(errors.length ? errors.join(" ") : null);
-    if (fileInput.current) fileInput.current.value = "";
+    if (errors.length) setLibraryError(errors.join(" "));
   }
-  async function retryIndex(id: string) {
+  async function documentAction(id: string, work: () => Promise<void>) {
     setBusyDocument(id);
     setLibraryError(null);
     try {
-      updateDocument(await indexDocument(id));
-    } catch (error) {
-      setLibraryError(error instanceof Error ? error.message : "Unable to index document.");
+      await work();
+    } catch (err) {
+      setLibraryError(errorMessage(err));
     } finally {
       setBusyDocument(null);
     }
   }
-  async function removeDocument(id: string) {
-    const doc = library?.documents.find((item) => item.id === id);
-    if (!doc || !window.confirm(`Remove ${doc.filename} from this workspace?`)) return;
-    setBusyDocument(id);
-    setLibraryError(null);
-    try {
-      await deleteDocument(id);
-      setLibrary(
-        (current) =>
-          current && { ...current, documents: current.documents.filter((item) => item.id !== id) },
-      );
-    } catch (error) {
-      setLibraryError(error instanceof Error ? error.message : "Unable to remove document.");
-    } finally {
-      setBusyDocument(null);
-    }
-  }
-
-  async function downloadDocument(id: string, filename: string) {
-    setBusyDocument(id);
-    setLibraryError(null);
-    try {
-      const blob = await api.downloadDocument(id);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = /\.(pdf|md)$/i.test(filename)
-        ? filename
-        : filename + (blob.type.includes("pdf") ? ".pdf" : ".md");
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      setLibraryError(error instanceof Error ? error.message : "Unable to download document.");
-    } finally {
-      setBusyDocument(null);
-    }
-  }
-
-  const composer = (
-    <QuestionInput
-      value={question}
-      loading={asking}
-      uploading={!!uploading}
-      onChange={setQuestion}
-      onSubmit={() => void submit()}
-      onAttach={pickFiles}
-    />
+  const visibleBots = bots.filter((item) =>
+    `${item.name} ${item.role}`.toLowerCase().includes(query.toLowerCase()),
   );
+  const activeCount = summaries.filter((task) => WORKING.has(task.status)).length;
 
   return (
-    <div className={`app-shell ${sidebarOpen ? "sidebar-open" : ""}`}>
-      {sidebarOpen && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="Close sidebar"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-      <aside className="sidebar" aria-label="Sidebar" aria-hidden={!sidebarOpen}>
-        <div className="sidebar-brand">
-          <span className="brand-symbol">
-            <Files size={21} />
-          </span>
-          <strong>Sentral</strong>
-          <button
-            className="icon-button sidebar-close"
-            aria-label="Close sidebar"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <nav className="primary-nav">
-          <button onClick={newChat}>
-            <SquarePen size={18} />
-            New chat
-            <span className="shortcut" aria-hidden="true">
-              ↗
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              setDocumentsOpen(true);
-              if (window.innerWidth <= 900) setSidebarOpen(false);
+    <main
+      className={`bot-workspace ${mobileChat ? "mobile-chat" : ""} ${inspectorOpen ? "inspector-is-open" : ""}`}
+    >
+      <aside className="bot-sidebar" aria-label="Your bots">
+        <header className="sidebar-brand">
+          <a
+            href="/"
+            aria-label="Axelyn home"
+            onClick={(event) => {
+              event.preventDefault();
+              setMobileChat(false);
+              setQuery("");
             }}
           >
-            <BookOpen size={18} />
-            Documents<span className="document-count">{library?.documents.length ?? 0}</span>
+            <span className="brand-symbol">
+              a<span />
+            </span>
+            <span>
+              axelyn<span className="brand-dot">.</span>
+            </span>
+          </a>
+          <button
+            className="icon-button"
+            aria-label="Create a bot"
+            onClick={() => setEditor({ kind: "bot" })}
+          >
+            <Plus size={19} />
+          </button>
+        </header>
+        <label className="bot-search">
+          <Search size={15} />
+          <input
+            ref={search}
+            aria-label="Search bots"
+            placeholder="Search your bots"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {query ? (
+            <button aria-label="Clear search" onClick={() => setQuery("")}>
+              <X size={12} />
+            </button>
+          ) : (
+            <kbd>⌘ K</kbd>
+          )}
+        </label>
+        <div className="roster-heading">
+          <span>Your team</span>
+          <span>{bots.length}</span>
+        </div>
+        <nav className="bot-roster">
+          {!loaded ? (
+            <div className="loading-bots">
+              <Loader2 size={17} className="spin" />
+              Opening your team…
+            </div>
+          ) : (
+            visibleBots.map((item) => {
+              const latest = summaries.find((task) => task.bot_id === item.id);
+              const needsInput = summaries.some(
+                (task) => task.bot_id === item.id && task.status === "needs_input",
+              );
+              return (
+                <button
+                  className={`bot-row ${bot?.id === item.id ? "selected" : ""}`}
+                  aria-current={bot?.id === item.id ? "true" : undefined}
+                  onClick={() => selectBot(item.id)}
+                  key={item.id}
+                >
+                  <span className="roster-avatar">
+                    <BotAvatar name={item.name} />
+                    {latest && WORKING.has(latest.status) && <span className="working-dot" />}
+                  </span>
+                  <span className="bot-row-content">
+                    <span className="bot-row-title">
+                      <strong>{item.name}</strong>
+                      <time>{latest ? timeLabel(latest.updated_at) : ""}</time>
+                    </span>
+                    <span className={`bot-row-preview ${needsInput ? "needs-attention" : ""}`}>
+                      {needsInput
+                        ? "Waiting for your reply"
+                        : latest
+                          ? `${STATUS[latest.status]} · ${latest.summary || latest.goal}`
+                          : item.role}
+                    </span>
+                  </span>
+                  {needsInput && <span className="unread-dot" />}
+                </button>
+              );
+            })
+          )}
+          {loaded && !visibleBots.length && (
+            <p className="empty-note">
+              {bots.length ? "No bots match your search." : "Your team is ready to begin."}
+            </p>
+          )}
+          <button className="add-bot-row" onClick={() => setEditor({ kind: "bot" })}>
+            <span>
+              <Plus size={17} />
+            </span>
+            Create a bot
           </button>
         </nav>
-        <div className="recent-heading">Recent chats</div>
-        <nav className="chat-history" aria-label="Recent chats">
-          {chats.length ? (
-            chats.map((chat) => (
-              <button
-                key={chat.id}
-                className={activeId === chat.id ? "active" : ""}
-                title={chat.title}
-                onClick={() => {
-                  setActiveId(chat.id);
-                  setQuestion("");
-                  if (window.innerWidth <= 900) setSidebarOpen(false);
-                }}
-              >
-                <MessageSquare size={15} />
-                <span>{chat.title}</span>
-              </button>
-            ))
-          ) : (
-            <p className="no-chats">Your conversations will appear here.</p>
-          )}
-        </nav>
-        <a
-          className="sidebar-footer"
-          href="https://github.com/aminhaiqal/sentral-ops-private-sop-assistant"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="project-mark">S</span>
-          <div>
-            <strong>Sentral Ops</strong>
-            <span>Open source · MIT</span>
+        <footer className="sidebar-footer">
+          <div className="team-status">
+            <span className={activeCount ? "live-dot" : "idle-dot"} />
+            {activeCount
+              ? `${activeCount} ${activeCount === 1 ? "task" : "tasks"} in progress`
+              : "Your team is ready"}
           </div>
-        </a>
-      </aside>
-      <main className="main-workspace">
-        <header className="workspace-header">
-          <div>
+          <button className="sidebar-link" onClick={() => setDocumentsOpen(true)}>
+            <BookOpen size={17} />
+            Knowledge<span>{library?.documents.length || ""}</span>
+          </button>
+          <div className="account-row">
+            {accountMenu}
+            <span>
+              <strong>My workspace</strong>
+              <small>Personal account</small>
+            </span>
             <button
               className="icon-button"
-              aria-label={sidebarOpen ? "Hide sidebar" : "Open sidebar"}
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="How autopilot works"
+              onClick={() => {
+                setHelp(!help);
+                setMobileChat(true);
+              }}
             >
-              <PanelLeft size={20} />
+              <CircleHelp size={17} />
             </button>
-            <h1>
-              Sentral <span>Ops assistant</span>
-            </h1>
           </div>
+        </footer>
+      </aside>
+      <section
+        className="conversation-panel"
+        aria-label={bot ? `Conversation with ${bot.name}` : "Bot conversation"}
+      >
+        <header className="conversation-header">
+          <button
+            className="icon-button mobile-back"
+            aria-label="Back to your team"
+            onClick={() => setMobileChat(false)}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          {bot && (
+            <>
+              <BotAvatar name={bot.name} size="small" />
+              <button className="conversation-title" onClick={() => inspect({ kind: "overview" })}>
+                <strong>{bot.name}</strong>
+                <span>
+                  Autopilot <ChevronDown size={11} />
+                </span>
+              </button>
+            </>
+          )}
           <div className="header-actions">
-            <button className="header-documents" onClick={() => setDocumentsOpen(true)}>
-              <FileText size={16} />
-              <span>Documents</span>
+            <button
+              className="icon-button"
+              aria-label="Bot details and routines"
+              aria-expanded={inspectorOpen}
+              onClick={() => {
+                setView({ kind: "overview" });
+                setInspectorOpen(!inspectorOpen);
+              }}
+            >
+              <Info size={19} />
             </button>
-            {accountMenu}
           </div>
         </header>
-        {!messages.length ? (
-          <section className="empty-chat">
-            <div className="welcome">
-              <h2>What would you like to know?</h2>
-              <p>Ask your SOPs. Find the next step.</p>
-            </div>
-            <div className="composer-container">{composer}</div>
-            <div className="suggestions" aria-label="Suggested questions">
-              {SUGGESTIONS.map((item) => (
-                <button
-                  key={item.label}
-                  disabled={asking}
-                  onClick={() => void submit(item.question)}
-                >
-                  {item.label}
-                  <ArrowUpRight size={14} />
-                </button>
-              ))}
-            </div>
-            <button className="add-document-hint" onClick={pickFiles}>
-              <Plus size={15} />
-              Or add a document of your own
+        {error && (
+          <div className="workspace-error" role="alert">
+            <span>{error}</span>
+            <button aria-label="Dismiss error" onClick={() => setError("")}>
+              <X size={14} />
             </button>
-          </section>
-        ) : (
-          <>
-            <section className="conversation" aria-label="Conversation">
-              <div className="message-column">
-                {messages.map((message) =>
-                  message.role === "user" ? (
-                    <div className="user-message" key={message.id}>
-                      <p>{message.content}</p>
-                    </div>
-                  ) : (
-                    <AnswerCard
-                      key={message.id}
-                      message={message}
-                      onDownload={(id, filename) => void downloadDocument(id, filename)}
-                    />
-                  ),
-                )}
-                <div ref={end} />
-              </div>
-            </section>
-            <div className="bottom-composer">
-              <div className="composer-container">{composer}</div>
-            </div>
-          </>
+          </div>
         )}
-        <footer className="workspace-footer">
-          Answers from your documents. Check the sources before acting.
-        </footer>
-      </main>
+        {help && (
+          <div className="autopilot-help">
+            <button className="icon-button" aria-label="Close help" onClick={() => setHelp(false)}>
+              <X size={15} />
+            </button>
+            <strong>Give a goal. Come back to the work.</strong>
+            <p>
+              Your bot searches the knowledge library, writes a document, and checks that it saved.
+              Runs continue in the background. Routines repeat on your schedule, and memory carries
+              preferences between tasks.
+            </p>
+            <p>
+              Add your documents in Knowledge. The included Sentral Ops SOPs are fictional sample
+              data. Email and calendar actions need a future integration.
+            </p>
+          </div>
+        )}
+        {bot ? (
+          <TaskConversation
+            bot={bot}
+            tasks={botTasks}
+            details={details}
+            busy={busy}
+            onSuggest={(text) => {
+              setGoal(text);
+              composer.current?.focus();
+            }}
+            onArtifact={(task, artifact) => inspect({ kind: "artifact", task, artifact })}
+            onTask={(id) => inspect({ kind: "task", id })}
+            onCancel={(id) => void action(id, async () => acceptTask(await api.cancelTask(id)))}
+            onReply={(id) => {
+              setReplyId(id);
+              composer.current?.focus();
+            }}
+            onRetry={(id) =>
+              void action(id, async () =>
+                acceptTask(await api.resumeTask(id, "Retry the task using the available context.")),
+              )
+            }
+          />
+        ) : (
+          <div className="workspace-loading" role="status">
+            {loaded ? (
+              <>
+                <p>Your workspace couldn’t load.</p>
+                <button className="button secondary" onClick={() => location.reload()}>
+                  Try again
+                </button>
+              </>
+            ) : (
+              <>
+                <Loader2 size={22} className="spin" />
+                <p>Getting your team ready…</p>
+              </>
+            )}
+          </div>
+        )}
+        <div className="composer-area">
+          {replyTask && (
+            <div className="reply-context">
+              <span>Replying to: {replyTask.goal}</span>
+              <button aria-label="Start a new task instead" onClick={() => setReplyId(null)}>
+                <X size={13} />
+              </button>
+            </div>
+          )}
+          <form
+            className="task-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <button
+              type="button"
+              className="composer-attach"
+              aria-label="Open knowledge library"
+              onClick={() => setDocumentsOpen(true)}
+            >
+              <Plus size={20} />
+            </button>
+            <textarea
+              ref={composer}
+              aria-label={replyTask ? "Reply to the bot" : "Give your bot a task"}
+              placeholder={
+                replyTask
+                  ? "Add the information your bot needs…"
+                  : `Give ${bot?.name ?? "your bot"} a task…`
+              }
+              value={goal}
+              maxLength={4000}
+              rows={1}
+              disabled={sending || !bot}
+              onChange={(event) => setGoal(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+            <button
+              className="send-task"
+              aria-label={sending ? "Starting task" : replyTask ? "Send reply" : "Start task"}
+              disabled={sending || !bot || goal.trim().length < 3}
+            >
+              {sending ? <Loader2 size={17} className="spin" /> : <ArrowUp size={18} />}
+            </button>
+          </form>
+          <p className="composer-caption">
+            {sending
+              ? "Handing it over…"
+              : replyTask
+                ? "Your reply continues the same task."
+                : "Assign the task. Your bot takes it from here."}
+          </p>
+        </div>
+      </section>
+      {bot && inspectorOpen && (
+        <>
+          <button
+            className="inspector-backdrop"
+            aria-label="Close details"
+            onClick={() => setInspectorOpen(false)}
+          />
+          <WorkspaceInspector
+            bot={bot}
+            view={view}
+            onView={setView}
+            onClose={() => setInspectorOpen(false)}
+            memories={memories.bot === bot.id ? memories.values : []}
+            memoryLoading={memories.bot !== bot.id && !memoryError}
+            memoryError={memoryError}
+            routines={routines.filter((routine) => routine.bot_id === bot.id)}
+            task={view.kind === "task" ? details[view.id] : undefined}
+            busy={busy}
+            documentCount={library?.documents.filter((doc) => doc.status === "indexed").length ?? 0}
+            onEditBot={() => setEditor({ kind: "bot", bot })}
+            onMemory={(memory) => setEditor({ kind: "memory", memory })}
+            onForget={(memory) =>
+              void action(memory.id, async () => {
+                await api.forgetMemory(bot.id, memory.id);
+                setMemories((current) => ({
+                  ...current,
+                  values: current.values.filter((item) => item.id !== memory.id),
+                }));
+              })
+            }
+            onRoutine={(routine) => setEditor({ kind: "routine", routine })}
+            onToggle={(routine) =>
+              void action(routine.id, async () => {
+                const {
+                  bot_id,
+                  name,
+                  goal,
+                  completion_criteria,
+                  recurrence,
+                  timezone,
+                  local_time,
+                  weekday,
+                } = routine;
+                const saved = await api.saveRoutine(
+                  {
+                    bot_id,
+                    name,
+                    goal,
+                    completion_criteria,
+                    recurrence,
+                    timezone,
+                    local_time,
+                    weekday,
+                    enabled: !routine.enabled,
+                  },
+                  routine.id,
+                );
+                setRoutines((current) =>
+                  current.map((item) => (item.id === saved.id ? saved : item)),
+                );
+              })
+            }
+            onRun={(routine) =>
+              void action(routine.id, async () => {
+                acceptTask(await api.runRoutine(routine.id));
+                if (window.innerWidth < 1180) setInspectorOpen(false);
+              })
+            }
+            onDeleteRoutine={(routine) =>
+              void action(routine.id, async () => {
+                await api.deleteRoutine(routine.id);
+                setRoutines((current) => current.filter((item) => item.id !== routine.id));
+              })
+            }
+            onKnowledge={() => setDocumentsOpen(true)}
+          />
+        </>
+      )}
       <input
+        hidden
         ref={fileInput}
         type="file"
-        className="visually-hidden"
-        tabIndex={-1}
         accept=".pdf,.md,application/pdf,text/markdown"
         multiple
-        onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
-        aria-label="Choose documents"
+        onChange={(event) => {
+          void uploadFiles(Array.from(event.target.files ?? []));
+          event.target.value = "";
+        }}
       />
       <DocumentPanel
         open={documentsOpen}
@@ -400,12 +731,65 @@ export default function App({
         busyId={busyDocument}
         error={libraryError}
         onClose={() => setDocumentsOpen(false)}
-        onPickFiles={pickFiles}
+        onPickFiles={() => fileInput.current?.click()}
         onUpload={(files) => void uploadFiles(files)}
-        onRetry={(id) => void retryIndex(id)}
-        onDelete={(id) => void removeDocument(id)}
-        onDownload={(id, filename) => void downloadDocument(id, filename)}
+        onRetry={(id) =>
+          void documentAction(id, async () => updateDocument(await api.indexDocument(id)))
+        }
+        onDelete={(id) =>
+          void documentAction(id, async () => {
+            await api.deleteDocument(id);
+            setLibrary(
+              (current) =>
+                current && {
+                  ...current,
+                  documents: current.documents.filter((doc) => doc.id !== id),
+                },
+            );
+          })
+        }
+        onDownload={(id, filename) =>
+          void documentAction(id, async () => saveBlob(await api.downloadDocument(id), filename))
+        }
       />
-    </div>
+      {editor?.kind === "bot" && (
+        <BotEditor
+          bot={editor.bot}
+          onClose={() => setEditor(null)}
+          onSave={async (data) => {
+            const saved = await api.saveBot(data, editor.bot?.id);
+            setBots((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+            selectBot(saved.id);
+            setEditor(null);
+          }}
+        />
+      )}
+      {bot && editor?.kind === "memory" && (
+        <MemoryEditor
+          memory={editor.memory}
+          onClose={() => setEditor(null)}
+          onSave={async (key, value) => {
+            const saved = await api.saveMemory(bot.id, key, value);
+            setMemories((current) => ({
+              bot: bot.id,
+              values: [saved, ...current.values.filter((item) => item.id !== saved.id)],
+            }));
+            setEditor(null);
+          }}
+        />
+      )}
+      {bot && editor?.kind === "routine" && (
+        <RoutineEditor
+          bot={bot}
+          routine={editor.routine}
+          onClose={() => setEditor(null)}
+          onSave={async (data) => {
+            const saved = await api.saveRoutine(data, editor.routine?.id);
+            setRoutines((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+            setEditor(null);
+          }}
+        />
+      )}
+    </main>
   );
 }

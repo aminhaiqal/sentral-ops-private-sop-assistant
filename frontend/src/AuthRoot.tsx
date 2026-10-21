@@ -32,7 +32,7 @@ function AccountWorkspace() {
       <main className="auth-page">
         <div className="auth-brand">
           <Files size={27} />
-          <span>Sentral Ops</span>
+          <span>axelyn.</span>
         </div>
         <p className="auth-intro">Sign in to your workspace.</p>
         {isSignUp ? (
@@ -59,7 +59,7 @@ export default function AuthRoot() {
       <main className="auth-page">
         <div className="auth-brand">
           <Files size={27} />
-          <span>Sentral Ops</span>
+          <span>axelyn.</span>
         </div>
         <h1>Sign-in is unavailable</h1>
         <p>Please contact your workspace administrator.</p>
@@ -70,14 +70,14 @@ export default function AuthRoot() {
       publishableKey={PUBLISHABLE_KEY}
       appearance={{
         variables: {
-          colorPrimary: "#b4d6c4",
-          colorBackground: "#212121",
-          colorForeground: "#ececec",
-          colorMutedForeground: "#a1a1a1",
-          colorInput: "#181818",
-          colorPrimaryForeground: "#15291d",
-          colorNeutral: "#ececec",
-          colorInputForeground: "#ececec",
+          colorPrimary: "#7856a8",
+          colorBackground: "#ffffff",
+          colorForeground: "#3c3247",
+          colorMutedForeground: "#9682a4",
+          colorInput: "#fcfaff",
+          colorPrimaryForeground: "#ffffff",
+          colorNeutral: "#3c3247",
+          colorInputForeground: "#3c3247",
           borderRadius: "0.6rem",
         },
       }}

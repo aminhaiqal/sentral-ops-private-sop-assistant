@@ -53,10 +53,24 @@ class TaskStore:
             db.close()
 
     def create(self, workspace: str, request: TaskRequest, settings: Settings) -> TaskView:
+        with self.connection() as db:
+            return self.create_in(db, workspace, request, settings)
+
+    def create_in(
+        self,
+        db,
+        workspace: str,
+        request: TaskRequest,
+        settings: Settings,
+        *,
+        routine_id: str | None = None,
+    ) -> TaskView:
+        """Create inside the caller's transaction, including scheduled-run bookkeeping."""
         task_id = uuid.uuid4().hex
         timestamp = now()
         state = {
             **request.model_dump(),
+            "routine_id": routine_id,
             "turns": 0,
             "tokens": 0,
             "max_turns": settings.harness_max_turns,
@@ -74,14 +88,21 @@ class TaskStore:
             "events": [],
         }
         event(state, "queued", "Task accepted for autonomous execution.")
-        with self.connection() as db:
-            if request.bot_id:
-                MemoryStore.bot_row(db, workspace, request.bot_id)
-            db.execute(
-                "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?)",
-                (task_id, workspace, timestamp, timestamp, json.dumps(state)),
-            )
-        return self.get(workspace, task_id)
+        if request.bot_id:
+            MemoryStore.bot_row(db, workspace, request.bot_id)
+        db.execute(
+            "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?)",
+            (task_id, workspace, timestamp, timestamp, json.dumps(state)),
+        )
+        return self.view(
+            {
+                "id": task_id,
+                "status": "queued",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+                "state": json.dumps(state),
+            }
+        )
 
     def row(self, workspace: str, task_id: str) -> dict:
         with self.connection() as db:
@@ -115,6 +136,7 @@ class TaskStore:
             artifacts=list(state["artifacts"].values()),
             sources=list(state["sources"].values()),
             bot_id=state.get("bot_id"),
+            routine_id=state.get("routine_id"),
             memory_ids=state.get("memory_ids", []),
         )
 
@@ -198,6 +220,7 @@ class TaskStore:
                 raise TaskConflict("Only tasks needing input or failed tasks can be resumed.")
             state = json.loads(row["state"])
             state.setdefault("inbox", []).append({"role": "user", "content": message})
+            event(state, "user_input", message)
             state["exception"] = ""
             state["retry_count"] = 0
             state.pop("retry_at", None)

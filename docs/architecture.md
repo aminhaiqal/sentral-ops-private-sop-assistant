@@ -6,7 +6,7 @@ separate `/api/tasks` harness lets a model choose registered tools to complete a
 
 ```mermaid
 flowchart LR
-    UI[React chat UI] --> API[FastAPI]
+    UI[React bot workspace] --> API[FastAPI]
     API --> Rules[Boundary rules and query planning]
     Rules --> Embeddings[Embedding API]
     Embeddings --> Search[Qdrant vector search]
@@ -101,11 +101,13 @@ can override ownership. This is individual account isolation, not organization/t
 Anonymous records from earlier versions remain stored but are not automatically claimed
 by an account. Re-upload demo files or plan a deliberate administrator migration.
 
-The frontend saves the latest 20 chats in account-scoped local storage. Recent turns are sent with a
-question for context. Deleting an uploaded document does not remove snippets already
-saved in chat history. These local chats do not sync across devices and are not encrypted
-by the application. The previous anonymous chat cache is not imported into signed-in
-accounts. Backend documents, tasks, and memories are accessible across account sessions.
+The workspace renders server-backed bot profiles, task summaries, task details,
+routines, and memory. It polls task state while the page is visible and retrieves
+changed task details; active jobs continue in the worker when the browser closes.
+Only the selected bot ID is saved in account-scoped local storage. Historical local
+chat caches from the earlier question-answering UI are left intact and are not
+imported into task conversations. Deleting knowledge or forgetting memory does not
+erase saved task excerpts, artifacts, or task history.
 
 ## Why this design
 
@@ -136,7 +138,8 @@ The modules in `backend/app/harness/` have distinct responsibilities:
 | `runner.py` | Model/tool loop, usage accounting, pending calls, receipts, retries, stopping conditions |
 | `store.py` | SQLite task state, checkpoints, owner controls, and workspace isolation |
 | `memory.py` | Bot profiles, owner preferences, bounded recall, and transactional outcome memory |
-| `worker.py` | Single-worker process lock, restart recovery, polling and graceful shutdown |
+| `routines.py` | Timezone-aware schedules and atomic, account-scoped task dispatch |
+| `worker.py` | Single-worker process lock, routine dispatch, restart recovery, polling and graceful shutdown |
 | `api.py` | Create, list, inspect, cancel, and resume jobs |
 
 ### Execution and recovery
@@ -255,8 +258,29 @@ verified Clerk account workspace. Retention and task deletion are not yet
 implemented. The task list returns the latest 50 summaries; individual task IDs remain
 accessible within their workspace.
 
-The runtime has no browser, shell execution, external messaging, approval authority,
-or scheduled routines. New connectors must implement
+The runtime has no browser, shell execution, external messaging,
+or approval authority. New connectors must implement
 idempotent execution and reconciliation using the task/call idempotency key; local
 receipts alone do not guarantee exactly-once effects in an external system. Keep these
 capabilities explicit in the tool registry and add task-specific success checks.
+
+
+### Scheduled routines
+
+`/api/routines` stores explicit user-created schedules in the same SQLite database.
+Each routine binds a bot, goal, completion criteria, IANA timezone, local time, and a
+daily/weekday/weekly recurrence. First-run bot onboarding creates profiles only; it
+never creates schedules or starts provider calls. A workspace can have 20 routines.
+
+The single worker checks due routines every 30 seconds between jobs. It creates a
+task and advances the schedule in one `BEGIN IMMEDIATE` transaction. Failed dispatch
+rolls both changes back. It coalesces missed dates into one run rather than replaying
+a backlog. A queued, running, or input-blocked task prevents overlapping runs of the
+same routine; manual **Run now** returns that active run too. Pausing prevents future
+dispatch but does not cancel a task that has already started. Deleting a routine keeps
+its task history. Resuming a paused routine schedules its next future date.
+
+Schedules use local calendar dates. A missing spring daylight-saving time moves
+forward by the offset change; an ambiguous autumn time uses its first occurrence,
+once per date. Long tasks can delay routine dispatch because the current worker
+processes one job at a time. Scheduling is eventual, not a real-time guarantee.

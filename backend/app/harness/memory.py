@@ -117,6 +117,49 @@ class MemoryStore:
             )
         return self.get_bot(workspace, bot_id)
 
+    def starter_bots(self, workspace: str) -> list[BotProfile]:
+        """Account-scoped, repeatable onboarding. Never overwrite a user's edits."""
+        templates = [
+            (
+                "chief",
+                "Chief of Staff",
+                "Prepare briefings, plans and decision documents.",
+                "Lead with the outcome. Turn the user's goal into a useful, concise document. "
+                "Separate documented policy from missing live updates. End with practical next steps.",
+            ),
+            (
+                "operations",
+                "Operations",
+                "Build practical checklists and operating guides.",
+                "Make documents easy to act on. Include responsibilities, ordered steps and "
+                "escalation points supported by the available documents.",
+            ),
+            (
+                "research",
+                "Research Analyst",
+                "Research your documents and prepare cited reports.",
+                "Compare the relevant sources, explain the findings and cite the evidence. "
+                "Make gaps and uncertainties explicit.",
+            ),
+            (
+                "support",
+                "Customer Support",
+                "Draft customer response playbooks from your policies.",
+                "Write clear, considerate response drafts and escalation guides. "
+                "Do not invent customer account details or claim to have sent a message.",
+            ),
+        ]
+        with self.store.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for key, name, role, instructions in templates:
+                bot_id = uuid.uuid5(uuid.NAMESPACE_URL, f"axelyn:{workspace}:starter:{key}").hex
+                at = timestamp()
+                db.execute(
+                    "INSERT OR IGNORE INTO bots VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (bot_id, workspace, name, role, instructions, at, at),
+                )
+        return self.list_bots(workspace)
+
     def get_bot(self, workspace: str, bot_id: str) -> BotProfile:
         with self.store.connection() as db:
             row = self.bot_row(db, workspace, bot_id)

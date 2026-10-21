@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from app.config import get_settings
 from app.harness.memory import MemoryStore
 from app.harness.model import ResponsesModel
+from app.harness.routines import RoutineStore
 from app.harness.runner import Harness
 from app.harness.store import TaskStore
 from app.harness.tools import document_tools
@@ -38,12 +39,17 @@ def main() -> None:
     args = parser.parse_args()
     settings = get_settings()
     store = TaskStore(settings.harness_db_path.resolve())
+    routines = RoutineStore(store, settings)
     stop = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
     with worker_lock(store):
         store.recover()
+        next_dispatch = 0.0
         while not stop.is_set():
+            if time.monotonic() >= next_dispatch:
+                routines.dispatch()
+                next_dispatch = time.monotonic() + 30
             task = store.claim()
             if task is None:
                 if args.once:

@@ -40,12 +40,14 @@ export default function DocumentPanel(props: Props) {
     >
       <div className="document-panel-inner">
         <header className="document-header">
-          <h2 id="documents-title">Documents</h2>
+          <h2 id="documents-title">Knowledge</h2>
           <button className="icon-button" aria-label="Close documents" onClick={props.onClose}>
             <X size={20} />
           </button>
         </header>
-        <p className="panel-description">Add documents to ask questions about them.</p>
+        <p className="panel-description">
+          Your bots use these documents to research tasks and create deliverables.
+        </p>
         <button
           type="button"
           className="upload-dropzone"
@@ -96,7 +98,9 @@ export default function DocumentPanel(props: Props) {
                   </button>
                   <span>
                     {fileSize(doc.size_bytes)} ·{" "}
-                    {doc.status === "indexed" ? "Ready to ask" : "Saved · Not searchable yet"}
+                    {doc.status === "indexed"
+                      ? "Ready for your bots"
+                      : "Saved · Not searchable yet"}
                   </span>
                   {doc.indexing_error && <p>{doc.indexing_error}</p>}
                 </div>

@@ -40,6 +40,8 @@ class TaskEvent(BaseModel):
 
 class TaskSummary(BaseModel):
     id: str
+    bot_id: str | None = None
+    routine_id: str | None = None
     goal: str
     completion_criteria: str
     status: TaskStatus
@@ -54,7 +56,6 @@ class TaskSummary(BaseModel):
 
 
 class TaskView(TaskSummary):
-    bot_id: str | None = None
     memory_ids: list[str] = Field(default_factory=list)
     context: str
     artifacts: list[Artifact]

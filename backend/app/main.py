@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth import require_user
 from app.config import get_settings
 from app.demo_questions import DEMO_QUESTIONS
-from app.harness.api import bots_router
+from app.harness.api import bots_router, routines_router
 from app.harness.api import router as task_router
 from app.harness.memory import MemoryConflict, MemoryNotFound
 from app.ingestion import ingest_all
@@ -69,6 +69,7 @@ app.add_middleware(
 
 app.include_router(task_router)
 app.include_router(bots_router)
+app.include_router(routines_router)
 
 
 @app.exception_handler(MemoryNotFound)

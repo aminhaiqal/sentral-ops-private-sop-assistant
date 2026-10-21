@@ -1,10 +1,12 @@
-# Sentral Ops
+# Axelyn
 
-An open-source SOP assistant you can run, understand, and improve.
+A workspace for an AI team that takes document tasks from a goal to a saved deliverable.
 
-Ask a question about company procedures and get an answer with citations, the retrieved
-source text, and a trace of each retrieval step. Built with React, FastAPI, Qdrant, and an
-OpenAI-compatible API. The included company and its 11 SOPs are fictional.
+Choose a bot, assign a task, and let the background worker research your knowledge,
+write a cited document, and check the saved result. Open the deliverable from the
+conversation, save preferences in bot memory, and schedule work to repeat while you’re
+away. Built with React, Clerk, FastAPI, SQLite, Qdrant, and a Responses-compatible AI
+provider. The included Sentral Ops company and its 11 SOPs are fictional sample data.
 
 ## What you can explore
 
@@ -15,8 +17,11 @@ OpenAI-compatible API. The included company and its 11 SOPs are fictional.
   confidential data, and approval decisions.
 - **Your own documents.** Upload text-based PDFs and Markdown with optional private R2
   storage. Each signed-in account has its own document and retrieval scope.
-- **Conversation context.** Recent turns support follow-up questions; chat history stays
-  in the browser.
+- **A team inbox.** Chief of Staff, Operations, Research Analyst, and Customer Support
+  have separate instructions, memory, and task conversations. Create your own bots.
+  Task history and deliverables are stored on the server and sync across sessions.
+- **Scheduled routines.** Run document tasks daily, on weekdays, or weekly in your
+  timezone. Pause, edit, delete, or run a routine immediately from bot details.
 - **Autopilot harness.** Submit a document task with completion criteria. A separate
   worker chooses tools, searches SOPs, saves a cited deliverable, and checks it before
   marking the task complete. Progress and results survive worker restarts.
@@ -56,12 +61,15 @@ backend. Clerk handles sign-in and sign-up; the frontend sends a fresh session b
 token with each private API request. AI and storage credentials stay on the backend.
 Missing Clerk configuration leaves private routes closed.
 
-Try asking:
+Try assigning a task:
 
-- What is the refund approval process for damaged goods?
-- When should a delivery delay be escalated?
-- Can staff paste invoice data into ChatGPT?
-- What is today's delivery ETA?
+- Prepare an operations briefing with the key policies and escalation paths.
+- Create a checklist for handling delayed deliveries.
+- Draft a customer response guide for refund requests.
+
+Use **Knowledge** to upload your documents. Use **Bot details** to edit a bot, schedule
+routines, and manage memory. The plus button in the composer opens the knowledge
+library; uploads become available to all bots in your account once indexed.
 
 The API reference is at [localhost:8000/docs](http://localhost:8000/docs). To inspect
 startup or indexing problems:
@@ -75,9 +83,13 @@ Stop with `docker compose down`. The Qdrant volume is retained between runs.
 
 ## Run an autopilot task
 
-Compose starts the API and harness worker together. Open
-[localhost:8000/docs](http://localhost:8000/docs) and use **Autopilot tasks**, or submit
-a job from a terminal using your current Clerk session token in the local
+Compose starts the API and harness worker together. Assign tasks in the bot
+conversation at [localhost:5173](http://localhost:5173). Progress updates automatically;
+you can close the page and return to the work. If a bot needs information, choose
+**Reply to this task** to continue the same run.
+
+For API access, open [localhost:8000/docs](http://localhost:8000/docs) and use
+**Autopilot tasks**, or submit a job from a terminal using your current Clerk session token in the local
 `SENTRAL_SESSION_TOKEN` environment variable. Keep that token private. Swagger's
 **Authorize** button accepts the same session token.
 
@@ -99,9 +111,10 @@ The worker runs search, write, read-back, and completion tools autonomously. A
 `POST /api/tasks/TASK_ID/resume` with `{"message":"Your clarification"}`. Cancel
 through `POST /api/tasks/TASK_ID/cancel`. Limits apply across retries and resumes.
 
-This initial harness delivers document work through the API. The chat UI continues
-to use the question-answering endpoint. Browser automation, external app actions,
-scheduling and a task dashboard are future integrations.
+The bot workspace uses the background task API. The original question-answering
+endpoint remains available through `/api/ask`. Email, calendar, browser automation,
+and other external app actions are not connected. Bots can research documents and
+save Markdown deliverables; they cannot send messages or change external systems.
 Completion checks validate saved artifacts and citation labels, not factual accuracy
 or semantic satisfaction of every requested criterion. See the
 [harness architecture](docs/architecture.md#autopilot-harness) for the execution model.
@@ -122,7 +135,11 @@ outcome. It then deletes the preference and checks that retrieval omits it. The
 command prints the database path so you can inspect the records afterward. Each run
 uses a separate demo database under `var/`; it never calls the model provider.
 
-For actual model-driven jobs, open `/docs` and use **Bot profiles and memory**:
+In the workspace, choose **Bot details → Memory** to add, edit, or forget a
+preference. Completed jobs also leave artifact-check records that later tasks can
+recall. Bot instructions are editable through **Edit bot**.
+
+For API-driven jobs, open `/docs` and use **Bot profiles and memory**:
 
 1. `POST /api/bots` with `{"name":"Operations","role":"Prepare SOP-backed guides","instructions":"Use plain language."}`.
 2. Copy the bot `id`, then `PUT /api/bots/BOT_ID/preferences/report_format` with `{"value":"checklist"}`.
@@ -144,7 +161,7 @@ or the outcome of an external app action.
 ## Learn the code
 
 ```text
-frontend/src/       Chat UI, document library, browser history, source inspection
+frontend/src/       Bot inbox, task conversations, routines, memory, knowledge and previews
 backend/app/       API, retrieval, guardrails, ingestion, document storage, harness
 backend/tests/     Offline tests with mocked providers and in-memory storage
 data/sentral_ops/  Fictional Markdown SOP corpus
