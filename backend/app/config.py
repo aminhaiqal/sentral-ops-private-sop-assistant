@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,10 +29,19 @@ class Settings(BaseSettings):
     r2_access_key_id: str | None = None
     r2_secret_access_key: str | None = None
     r2_prefix: str = "sentral-ops"
-    workspace_cookie_secure: bool = False
+    clerk_issuer_url: str | None = None
+    clerk_jwt_key: str | None = None
+    clerk_authorized_parties: str = ""
+    clerk_audience: str | None = None
     max_upload_bytes: int = 10 * 1024 * 1024
     backend_cors_origins: str = "http://localhost:5173"
     data_dir: Path = Field(default_factory=lambda: PROJECT_ROOT / "data" / "sentral_ops")
+    harness_db_path: Path = Field(default_factory=lambda: PROJECT_ROOT / "var" / "harness.sqlite3")
+    harness_max_turns: int = Field(default=16, ge=1, le=100)
+    harness_max_tokens: int = Field(default=32000, ge=1000, le=1000000)
+    harness_max_context_chars: int = Field(default=200000, ge=10000, le=2000000)
+    harness_max_runtime_seconds: int = Field(default=600, ge=10, le=3600)
+    harness_request_timeout_seconds: int = Field(default=60, ge=1, le=120)
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -44,6 +53,32 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @field_validator("clerk_issuer_url", mode="before")
+    @classmethod
+    def validate_clerk_issuer(cls, value):
+        from urllib.parse import urlsplit
+
+        if not value:
+            return None
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+        ):
+            raise ValueError("CLERK_ISSUER_URL must be the HTTPS origin of your Clerk instance.")
+        return value.rstrip("/")
+
+    @property
+    def authorized_parties(self) -> list[str]:
+        return [
+            item.strip() for item in self.clerk_authorized_parties.split(",") if item.strip()
+        ] or self.cors_origins
 
     @property
     def storage_configured(self) -> bool:

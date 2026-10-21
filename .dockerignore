@@ -23,6 +23,7 @@ frontend/.vite
 
 .pytest_cache
 qdrant_storage
+var
 .DS_Store
 .github
 docs

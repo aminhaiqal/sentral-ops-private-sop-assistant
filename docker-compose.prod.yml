@@ -34,8 +34,12 @@ services:
     environment:
       QDRANT_URL: http://qdrant:6333
       BACKEND_CORS_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN to your hostname}
+      CLERK_ISSUER_URL: ${CLERK_ISSUER_URL:?Set CLERK_ISSUER_URL to your production Clerk issuer}
+      CLERK_AUTHORIZED_PARTIES: https://${APP_DOMAIN:?Set APP_DOMAIN to your hostname}
       AUTO_INGEST_ON_STARTUP: "true"
-      WORKSPACE_COOKIE_SECURE: "true"
+      HARNESS_DB_PATH: /app/var/harness.sqlite3
+    volumes:
+      - harness_state:/app/var
     restart: unless-stopped
     init: true
     mem_limit: 512m
@@ -60,6 +64,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: ""
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:?Set VITE_CLERK_PUBLISHABLE_KEY to your production Clerk publishable key}
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.25
@@ -97,8 +102,33 @@ services:
     mem_limit: 128m
     logging: *default-logging
 
+  worker:
+    image: sentral/backend:${SENTRAL_RELEASE:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      HARNESS_DB_PATH: /app/var/harness.sqlite3
+    volumes:
+      - harness_state:/app/var
+    command: ["python", "-m", "app.harness.worker"]
+    restart: unless-stopped
+    init: true
+    mem_limit: 512m
+    cpus: 0.75
+    networks:
+      - backend
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    logging: *default-logging
+
 volumes:
   qdrant_storage:
+  harness_state:
   caddy_data:
   caddy_config:
 

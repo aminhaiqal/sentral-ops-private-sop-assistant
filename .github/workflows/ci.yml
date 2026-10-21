@@ -51,6 +51,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run format:check
+      - run: npm test
       - run: npm run build
       - run: npm audit --audit-level=high
 
@@ -66,6 +67,14 @@ jobs:
       - run: docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
         env:
           APP_DOMAIN: assistant.example.com
+          CLERK_ISSUER_URL: https://clerk.example.com
+          VITE_CLERK_PUBLISHABLE_KEY: pk_live_example
+      - run: docker compose --env-file .env.example -f docker-compose.prod.yml -f docker-compose.shared-proxy.yml config --quiet
+        env:
+          APP_DOMAIN: assistant.example.com
+          CLERK_ISSUER_URL: https://clerk.example.com
+          VITE_CLERK_PUBLISHABLE_KEY: pk_live_example
+          SHARED_PROXY_NETWORK: existing-proxy-network
       - run: docker compose --env-file .env.example build
 
   secrets:

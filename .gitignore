@@ -17,6 +17,7 @@ dist/
 .vite/
 
 qdrant_storage/
+var/
 .DS_Store
 *.log
 .idea/

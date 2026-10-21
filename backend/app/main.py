@@ -11,8 +11,12 @@ from fastapi.responses import StreamingResponse
 from openai import APIStatusError
 from starlette.concurrency import run_in_threadpool
 
+from app.auth import require_user
 from app.config import get_settings
 from app.demo_questions import DEMO_QUESTIONS
+from app.harness.api import bots_router
+from app.harness.api import router as task_router
+from app.harness.memory import MemoryConflict, MemoryNotFound
 from app.ingestion import ingest_all
 from app.openai_client import OpenAINotConfigured, provider_error_message
 from app.qdrant_store import QdrantStore
@@ -62,6 +66,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(task_router)
+app.include_router(bots_router)
+
+
+@app.exception_handler(MemoryNotFound)
+async def missing_memory(request, exc):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=404,
+        content={"detail": str(exc)},
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@app.exception_handler(MemoryConflict)
+async def memory_conflict(request, exc):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=409,
+        content={"detail": str(exc)},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.exception_handler(StorageUnavailable)
@@ -114,7 +143,7 @@ def ready() -> HealthResponse:
     )
 
 
-@app.post("/api/ingest", response_model=IngestResponse)
+@app.post("/api/ingest", response_model=IngestResponse, dependencies=[Depends(require_user)])
 def ingest() -> IngestResponse:
     try:
         return ingest_all(get_settings())

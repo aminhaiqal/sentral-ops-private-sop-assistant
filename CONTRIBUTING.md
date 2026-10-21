@@ -20,6 +20,9 @@ docker compose up -d qdrant
 
 Add an API key to `.env` for indexing and answers. You can work on tests, documentation,
 and most UI changes without one. R2 is only required for document uploads.
+For interactive use, also configure Clerk's publishable key and issuer in the root
+`.env`, as described in [configuration](docs/configuration.md#clerk-authentication).
+Tests generate their own RSA keys and session tokens and never contact Clerk.
 
 In one terminal:
 
@@ -47,7 +50,7 @@ Without Make, create `backend/.venv` with `python3.12 -m venv backend/.venv`, in
 ## Checks
 
 ```bash
-make check       # Ruff lint and format, Prettier, pytest, TypeScript, Vite build
+make check       # Ruff, Prettier, pytest, frontend request/storage tests, TypeScript, Vite build
 make format      # Apply import sorting and formatting
 make test        # Backend tests only
 make build       # Frontend type check and production build

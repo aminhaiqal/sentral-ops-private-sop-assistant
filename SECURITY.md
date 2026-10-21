@@ -16,20 +16,31 @@ series or guaranteed response time.
 This is an educational application with fictional fixtures, not a complete private
 document platform. In particular:
 
-- There is no user authentication, role-based authorization, rate limiting, or audit log.
-- Workspace cookies act as bearer credentials. They scope stored documents and vector
-  queries but do not identify a person or establish company tenancy.
+- Private endpoints require a verified Clerk session bearer token. Signature, issuer,
+  time claims, user/session identity, and authorized frontend origin are checked.
+  Missing configuration fails closed; browser workspace cookies cannot authorize access.
+- Workspaces belong to individual Clerk accounts. Team/organization permissions,
+  rate limiting, and a security audit log are not implemented.
 - Model prompts and keyword rules cannot guarantee protection from prompt injection,
   data disclosure, fabricated citations, or incorrect operational advice.
 - Text is sent to the configured AI provider for embeddings and answer generation.
   Upload originals, extracted text, and metadata are stored in R2.
 - Browser history can retain answer text and snippets after a source document is deleted.
-  Losing a workspace cookie does not remove stored uploads. Retention is operator-managed.
-- Public question and upload routes can consume provider credits and storage. The
+  Signing out does not delete stored uploads or local chat caches. Retention is operator-managed.
+- Authenticated question and upload routes can consume provider credits and storage. The
   HTTPS proxy blocks shared-corpus ingestion, but it does not restrict these other routes.
+- Task submission can also consume provider credits asynchronously. Task transcripts,
+  retrieved excerpts, and artifacts persist in the local SQLite database. Task events
+  describe execution; they are not a security audit log. Workspace isolation and
+  retention limitations apply to tasks as well as uploads.
+- Bot profiles, owner preferences, and artifact-check outcome memories share that
+  SQLite database, scoped by workspace and bot. The database is not encrypted by this
+  application. Deleting a memory prevents future retrieval but does not erase prior
+  task transcripts, model outputs, artifacts, or backups. Retrieved memory is sent to
+  the configured model provider when the bot works on a task.
 
-Before handling real internal documents, add authenticated access, enforced authorization,
-request and spending limits, retention and deletion procedures, audit logging, and
+Before handling real internal documents, review the account access policy and add team
+authorization where needed, request and spending limits, retention and deletion procedures, audit logging, and
 monitoring. Review the data-processing terms of your AI and storage providers.
 
 ## Secrets and deployment
@@ -40,6 +51,6 @@ credential is exposed, revoke it at the provider; deleting it from a later commi
 insufficient.
 
 Local Compose publishes services only on loopback. The HTTPS example keeps FastAPI and
-Qdrant off host ports, uses secure workspace cookies, and stores certificates in volumes.
+Qdrant off host ports, binds token authorization to the frontend origin, and stores certificates in volumes.
 Keep R2 private and scope its credentials to the required bucket. See
 [deployment](docs/deployment.md) for configuration and persistence details.

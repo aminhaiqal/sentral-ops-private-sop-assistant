@@ -1,0 +1,15 @@
+# Add to docker-compose.prod.yml when an existing proxy owns ports 80 and 443.
+services:
+  proxy:
+    profiles: [standalone-proxy]
+
+  frontend:
+    networks:
+      public:
+        aliases:
+          - sentral_frontend
+
+networks:
+  public:
+    external: true
+    name: ${SHARED_PROXY_NETWORK:?Set SHARED_PROXY_NETWORK to the existing proxy network}

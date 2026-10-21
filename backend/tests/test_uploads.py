@@ -4,7 +4,6 @@ import httpx
 import pytest
 from botocore.exceptions import ClientError
 from botocore.response import StreamingBody
-from fastapi.testclient import TestClient
 from openai import APIStatusError
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -60,12 +59,14 @@ def upload_app(monkeypatch):
     return main.app, settings, storage
 
 
-def test_upload_saves_original_when_indexing_is_unavailable_and_isolates_browsers(upload_app):
+def test_upload_saves_original_when_indexing_is_unavailable_and_isolates_browsers(
+    upload_app, authenticated_client
+):
     app, _, storage = upload_app
     content = b"# Staff drill\n\nThe emergency drill starts at 9 AM every Thursday."
-    with TestClient(app) as owner, TestClient(app) as stranger:
+    with authenticated_client(app) as owner, authenticated_client(app) as stranger:
         library = owner.get("/api/documents")
-        assert "HttpOnly" in library.headers["set-cookie"]
+        assert "sentral_workspace" not in library.headers.get("set-cookie", "")
         assert library.json()["documents"] == []
         result = owner.post(
             "/api/documents", files={"file": ("drill.md", content, "text/markdown")}
@@ -97,7 +98,9 @@ def test_upload_saves_original_when_indexing_is_unavailable_and_isolates_browser
         )
 
 
-def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypatch):
+def test_retry_indexes_saved_file_without_duplicate_vectors(
+    upload_app, monkeypatch, authenticated_client
+):
     import app.uploads as uploads
 
     app, settings, storage = upload_app
@@ -105,7 +108,7 @@ def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypa
     vectors.settings = settings
     vectors.client = QdrantClient(":memory:")
     monkeypatch.setattr(uploads, "QdrantStore", lambda settings: vectors)
-    with TestClient(app) as browser:
+    with authenticated_client(app) as browser:
         doc = browser.post(
             "/api/documents",
             files={"file": ("policy.md", b"# Policy\n\nRefunds require a receipt.")},
@@ -144,7 +147,7 @@ def test_retry_indexes_saved_file_without_duplicate_vectors(upload_app, monkeypa
     ],
 )
 def test_provider_error_keeps_upload_safe_and_retry_recovers(
-    upload_app, monkeypatch, caplog, status, code, expected_action
+    upload_app, monkeypatch, caplog, status, code, expected_action, authenticated_client
 ):
     import app.main as main
     import app.uploads as uploads
@@ -184,7 +187,7 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
     monkeypatch.setattr(uploads, "OpenAIClient", Embeddings)
     monkeypatch.setattr(main, "RagAssistant", AnswerAssistant)
     content = b"# Visitor policy\n\nVisitors must sign in at reception."
-    with TestClient(app) as browser:
+    with authenticated_client(app) as browser:
         response = browser.post("/api/documents", files={"file": ("visitors.md", content)})
         assert response.status_code == 201
         doc = response.json()
@@ -216,17 +219,19 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
         ("encoding.md", b"\xff\xfe"),
     ],
 )
-def test_invalid_files_are_rejected_before_storage(upload_app, filename, content):
+def test_invalid_files_are_rejected_before_storage(
+    upload_app, filename, content, authenticated_client
+):
     app, _, storage = upload_app
-    with TestClient(app) as browser:
+    with authenticated_client(app) as browser:
         response = browser.post("/api/documents", files={"file": (filename, content)})
         assert response.status_code == 422
         assert not storage.objects
 
 
-def test_upload_size_limit_is_enforced_before_storage(upload_app):
+def test_upload_size_limit_is_enforced_before_storage(upload_app, authenticated_client):
     app, _, storage = upload_app
-    with TestClient(app) as browser:
+    with authenticated_client(app) as browser:
         response = browser.post("/api/documents", files={"file": ("large.md", b"x" * 2049)})
         assert response.status_code == 413
         assert not storage.objects

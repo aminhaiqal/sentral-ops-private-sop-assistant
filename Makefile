@@ -17,6 +17,7 @@ lint:
 
 test:
 	cd backend && .venv/bin/python -m pytest
+	npm --prefix frontend test
 
 build:
 	npm --prefix frontend run build

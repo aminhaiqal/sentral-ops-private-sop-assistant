@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -10,14 +10,13 @@ import {
   SquarePen,
   X,
 } from "lucide-react";
-import { askQuestion, deleteDocument, getDocuments, indexDocument, uploadDocument } from "./api";
+import type { ApiClient } from "./api";
 import { readChats, saveChats } from "./chats";
 import AnswerCard from "./components/AnswerCard";
 import DocumentPanel from "./components/DocumentPanel";
 import QuestionInput from "./components/QuestionInput";
 import type { Chat, ChatMessage, DocumentLibrary, UploadedDocument } from "./types";
 
-const INITIAL_CHATS = readChats();
 const SUGGESTIONS = [
   {
     label: "Explain the refund process",
@@ -27,9 +26,18 @@ const SUGGESTIONS = [
   { label: "Check the AI usage policy", question: "Can staff paste invoice data into ChatGPT?" },
 ];
 
-export default function App() {
-  const [chats, setChats] = useState<Chat[]>(INITIAL_CHATS);
-  const [activeId, setActiveId] = useState<string | null>(INITIAL_CHATS[0]?.id ?? null);
+export default function App({
+  api,
+  storageScope,
+  accountMenu,
+}: {
+  api: ApiClient;
+  storageScope: string;
+  accountMenu: ReactNode;
+}) {
+  const { askQuestion, deleteDocument, getDocuments, indexDocument, uploadDocument } = api;
+  const [chats, setChats] = useState<Chat[]>(() => readChats(storageScope));
+  const [activeId, setActiveId] = useState<string | null>(() => chats[0]?.id ?? null);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
@@ -44,13 +52,13 @@ export default function App() {
   const messages = active?.messages ?? [];
 
   useEffect(() => {
-    saveChats(chats);
-  }, [chats]);
+    saveChats(storageScope, chats);
+  }, [chats, storageScope]);
   useEffect(() => {
     void getDocuments()
       .then(setLibrary)
       .catch((error: Error) => setLibraryError(error.message));
-  }, []);
+  }, [getDocuments]);
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, asking]);
@@ -191,6 +199,28 @@ export default function App() {
     }
   }
 
+  async function downloadDocument(id: string, filename: string) {
+    setBusyDocument(id);
+    setLibraryError(null);
+    try {
+      const blob = await api.downloadDocument(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = /\.(pdf|md)$/i.test(filename)
+        ? filename
+        : filename + (blob.type.includes("pdf") ? ".pdf" : ".md");
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : "Unable to download document.");
+    } finally {
+      setBusyDocument(null);
+    }
+  }
+
   const composer = (
     <QuestionInput
       value={question}
@@ -292,10 +322,13 @@ export default function App() {
               Sentral <span>Ops assistant</span>
             </h1>
           </div>
-          <button className="header-documents" onClick={() => setDocumentsOpen(true)}>
-            <FileText size={16} />
-            <span>Documents</span>
-          </button>
+          <div className="header-actions">
+            <button className="header-documents" onClick={() => setDocumentsOpen(true)}>
+              <FileText size={16} />
+              <span>Documents</span>
+            </button>
+            {accountMenu}
+          </div>
         </header>
         {!messages.length ? (
           <section className="empty-chat">
@@ -331,7 +364,11 @@ export default function App() {
                       <p>{message.content}</p>
                     </div>
                   ) : (
-                    <AnswerCard key={message.id} message={message} />
+                    <AnswerCard
+                      key={message.id}
+                      message={message}
+                      onDownload={(id, filename) => void downloadDocument(id, filename)}
+                    />
                   ),
                 )}
                 <div ref={end} />
@@ -367,6 +404,7 @@ export default function App() {
         onUpload={(files) => void uploadFiles(files)}
         onRetry={(id) => void retryIndex(id)}
         onDelete={(id) => void removeDocument(id)}
+        onDownload={(id, filename) => void downloadDocument(id, filename)}
       />
     </div>
   );

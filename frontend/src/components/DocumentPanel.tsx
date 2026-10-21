@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { Check, Download, FileText, Loader2, RotateCw, Trash2, Upload, X } from "lucide-react";
-import { documentDownloadUrl } from "../api";
 import type { DocumentLibrary } from "../types";
 
 type Props = {
@@ -14,6 +13,7 @@ type Props = {
   onUpload: (files: File[]) => void;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
+  onDownload: (id: string, filename: string) => void;
 };
 
 function fileSize(bytes: number): string {
@@ -79,7 +79,7 @@ export default function DocumentPanel(props: Props) {
           <div className="empty-library">
             <FileText size={26} />
             <p>Your documents will appear here.</p>
-            <span>They stay available in this browser's workspace.</span>
+            <span>They stay available in your account.</span>
           </div>
         ) : (
           <ul className="document-list">
@@ -87,9 +87,13 @@ export default function DocumentPanel(props: Props) {
               <li className="document-row" key={doc.id}>
                 <FileText size={19} className="document-icon" />
                 <div className="document-info">
-                  <a href={documentDownloadUrl(doc.id)} title={doc.filename}>
+                  <button
+                    className="document-name"
+                    onClick={() => props.onDownload(doc.id, doc.filename)}
+                    title={doc.filename}
+                  >
                     {doc.filename}
-                  </a>
+                  </button>
                   <span>
                     {fileSize(doc.size_bytes)} ·{" "}
                     {doc.status === "indexed" ? "Ready to ask" : "Saved · Not searchable yet"}
@@ -113,13 +117,13 @@ export default function DocumentPanel(props: Props) {
                       ) : (
                         <Check size={15} className="document-ready" />
                       )}
-                      <a
+                      <button
                         className="icon-button small"
-                        href={documentDownloadUrl(doc.id)}
+                        onClick={() => props.onDownload(doc.id, doc.filename)}
                         aria-label={`Download ${doc.filename}`}
                       >
                         <Download size={15} />
-                      </a>
+                      </button>
                       <button
                         className="icon-button small"
                         onClick={() => props.onDelete(doc.id)}

@@ -1,8 +1,10 @@
 import type { Chat } from "./types";
-const STORAGE_KEY = "sentral.chats.v1";
-export function readChats(): Chat[] {
+function storageKey(scope: string) {
+  return `sentral.chats.v2:${scope}`;
+}
+export function readChats(scope: string): Chat[] {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    const value = JSON.parse(localStorage.getItem(storageKey(scope)) ?? "[]");
     if (!Array.isArray(value)) return [];
     return value
       .filter(
@@ -28,9 +30,9 @@ export function readChats(): Chat[] {
     return [];
   }
 }
-export function saveChats(chats: Chat[]): void {
+export function saveChats(scope: string, chats: Chat[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(chats.slice(0, 20)));
+    localStorage.setItem(storageKey(scope), JSON.stringify(chats.slice(0, 20)));
   } catch {
     /* Chatting still works when browser storage is unavailable. */
   }

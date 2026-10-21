@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app/ /app/backend/app/
 COPY data/ /app/data/
 
-RUN useradd --create-home --shell /usr/sbin/nologin appuser
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && mkdir -p /app/var \
+    && chown appuser:appuser /app/var
 USER appuser
 
 EXPOSE 8000

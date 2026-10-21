@@ -20,10 +20,14 @@ certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+    # via cryptography
 click==8.5.0
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
     # via tqdm
+cryptography==50.0.2
+    # via pyjwt
 distro==1.9.0
     # via openai
 fastapi==0.150.0
@@ -72,6 +76,8 @@ portalocker==2.10.1
     # via qdrant-client
 protobuf==7.36.2
     # via grpcio-tools
+pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 pydantic==2.14.1
     # via
     #   sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
@@ -82,6 +88,8 @@ pydantic==2.14.1
 pydantic-core==2.50.1
     # via pydantic
 pydantic-settings==2.16.0
+    # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
+pyjwt==2.15.1
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
 pypdf==6.21.1
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)

@@ -1,10 +1,15 @@
 import { AlertCircle, ChevronDown, FileText, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { documentDownloadUrl } from "../api";
 import type { ChatMessage } from "../types";
 
-export default function AnswerCard({ message }: { message: ChatMessage }) {
+export default function AnswerCard({
+  message,
+  onDownload,
+}: {
+  message: ChatMessage;
+  onDownload: (id: string, filename: string) => void;
+}) {
   const response = message.response;
   return (
     <article className="assistant-message" aria-live="polite">
@@ -51,9 +56,14 @@ export default function AnswerCard({ message }: { message: ChatMessage }) {
                       <div className="source-heading">
                         <span className="citation-badge">{source.citation}</span>
                         {/upload-[a-f0-9]{32}/.test(source.document_id) ? (
-                          <a href={documentDownloadUrl(source.document_id.replace("upload-", ""))}>
+                          <button
+                            className="document-name"
+                            onClick={() =>
+                              onDownload(source.document_id.replace("upload-", ""), source.title)
+                            }
+                          >
                             {source.title}
-                          </a>
+                          </button>
                         ) : (
                           <strong>{source.title}</strong>
                         )}
