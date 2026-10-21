@@ -1,6 +1,4 @@
 import type {
-  AskResponse,
-  ConversationTurn,
   DocumentLibrary,
   UploadedDocument,
   Bot,
@@ -98,12 +96,6 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
       request(`/api/routines/${encodeURIComponent(id)}`, { method: "DELETE" }),
     runRoutine: (id: string): Promise<Task> =>
       request(`/api/routines/${encodeURIComponent(id)}/run`, { method: "POST" }),
-    askQuestion(question: string, history: ConversationTurn[] = []): Promise<AskResponse> {
-      return request("/api/ask", {
-        method: "POST",
-        body: JSON.stringify({ question, top_k: 5, history }),
-      });
-    },
     getDocuments(): Promise<DocumentLibrary> {
       return request("/api/documents");
     },

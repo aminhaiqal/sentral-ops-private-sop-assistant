@@ -98,9 +98,10 @@ background execution.
 
 Qdrant vectors live in the `qdrant_storage` volume. Caddy certificates and configuration
 use `caddy_data` and `caddy_config`. Upload originals, extracted text, and metadata live
-in the configured R2 bucket. Chats live only in each browser's local storage.
+in the configured R2 bucket. Bot conversations use server-backed task history.
 Task transcripts, retrieved evidence, and Markdown artifacts live in `harness_state`.
-Bot profiles, preferences, and cross-job outcome records share that database and volume.
+Bot profiles, routines, preferences, and cross-job outcome records share that database
+and volume. Only the selected bot ID is saved in account-scoped browser storage.
 Signing in to the same Clerk account restores access from another device or session.
 Legacy anonymous workspace cookies no longer grant access to private endpoints.
 

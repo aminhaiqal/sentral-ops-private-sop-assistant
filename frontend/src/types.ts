@@ -1,8 +1,3 @@
-export type BoundaryWarning = {
-  category: string;
-  message: string;
-};
-
 export type SourceSnippet = {
   document_id: string;
   title: string;
@@ -10,19 +5,6 @@ export type SourceSnippet = {
   score: number;
   excerpt: string;
   citation: string;
-};
-
-export type AgentStep = {
-  name: string;
-  status: string;
-  detail: string;
-};
-
-export type AskResponse = {
-  answer: string;
-  sources: SourceSnippet[];
-  warnings: BoundaryWarning[];
-  agent_steps: AgentStep[];
 };
 
 export type UploadedDocument = {
@@ -42,15 +24,6 @@ export type DocumentLibrary = {
   storage_configured: boolean;
   demo_documents: number;
 };
-
-export type ConversationTurn = { role: "user" | "assistant"; content: string };
-export type ChatMessage = ConversationTurn & {
-  id: string;
-  response?: AskResponse;
-  pending?: boolean;
-  error?: string;
-};
-export type Chat = { id: string; title: string; updatedAt: number; messages: ChatMessage[] };
 
 export type BotInput = { name: string; role: string; instructions: string };
 export type Bot = BotInput & { id: string; created_at: string; updated_at: string };
