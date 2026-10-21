@@ -5,6 +5,11 @@ Open **Bot Studio** from the Axelyn sidebar, or visit `/#/studio` while signed i
 The existing document workspace and its routines remain available separately.
 Studio V1 supports manual execution only.
 
+Signed-out Studio links hand the URL hash to Clerk before mounting sign-in. Only a
+validated same-origin Studio return path is retained in session storage, scoped to
+the Clerk application; it is cleared when the session becomes active. No session
+tokens or credentials are stored by this handoff.
+
 ## First bot
 
 1. Choose **Create bot**. V1 uses the **Lead Research Bot** template.

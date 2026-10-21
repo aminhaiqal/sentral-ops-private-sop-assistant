@@ -1,14 +1,33 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClerkProvider, SignIn, SignUp, UserButton, useSession } from "@clerk/react";
 import { Files } from "lucide-react";
 import App from "./App";
 import { createApiClient } from "./api";
+import { clearAuthReturn, prepareAuthRoute } from "./authReturn";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function AccountWorkspace() {
   const { isLoaded, session } = useSession();
   const isSignUp = window.location.pathname.startsWith("/sign-up");
+  const [authReady, setAuthReady] = useState(false);
+  const [authRedirect, setAuthRedirect] = useState("/");
+  useEffect(() => {
+    if (!isLoaded) return;
+    let storage: Storage | null = null;
+    try {
+      storage = window.sessionStorage;
+    } catch {
+      /* Private browsing may disable storage. */
+    }
+    if (!session || session.status !== "active") {
+      setAuthRedirect(prepareAuthRoute(window.location, window.history, storage, PUBLISHABLE_KEY));
+      setAuthReady(true);
+    } else {
+      clearAuthReturn(storage, PUBLISHABLE_KEY);
+      setAuthReady(false);
+    }
+  }, [isLoaded, session]);
   const api = useMemo(
     () =>
       session
@@ -28,6 +47,12 @@ function AccountWorkspace() {
       </div>
     );
   if (!session || session.status !== "active" || !api) {
+    if (!authReady)
+      return (
+        <div className="auth-page" role="status">
+          Opening sign-in…
+        </div>
+      );
     return (
       <main className="auth-page">
         <div className="auth-brand">
@@ -36,9 +61,9 @@ function AccountWorkspace() {
         </div>
         <p className="auth-intro">Sign in to your workspace.</p>
         {isSignUp ? (
-          <SignUp routing="hash" signInUrl="/" forceRedirectUrl="/" />
+          <SignUp routing="hash" signInUrl="/" forceRedirectUrl={authRedirect} />
         ) : (
-          <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl="/" />
+          <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl={authRedirect} />
         )}
       </main>
     );
