@@ -28,6 +28,16 @@ provider. The included Sentral Ops company and its 11 SOPs are fictional sample 
 - **Bot memory.** Give a bot standing instructions and editable preferences. Subsequent
   jobs retrieve those preferences and prior artifact-check outcomes from SQLite.
 
+## Bot Studio
+
+Open **Bot Studio** from the sidebar to create a Lead Research Bot using a simple
+form. It runs Research → Analyze → Save → Draft through registered skills, saves
+account-scoped execution history, and generates outreach drafts without sending.
+Web research requires a server-managed Brave Search API key; missing providers
+produce setup instructions and a saved configuration error.
+
+See [Bot Studio setup, architecture and verification](docs/bot-studio.md).
+
 ## Run locally
 
 You need Docker Compose and an API key for the configured AI provider. API requests

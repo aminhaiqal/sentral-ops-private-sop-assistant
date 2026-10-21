@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircleHelp,
   Info,
+  Layers3,
   Loader2,
   Plus,
   Search,
@@ -27,6 +28,7 @@ import TaskConversation from "./components/TaskConversation";
 import WorkspaceInspector, { type InspectorView } from "./components/WorkspaceInspector";
 import { BotEditor, MemoryEditor, RoutineEditor } from "./components/WorkspaceEditors";
 import { saveBlob, STATUS, timeLabel, WORKING } from "./workspace";
+import Studio from "./studio/Studio";
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong. Please try again.";
@@ -35,7 +37,33 @@ type Editor =
   | { kind: "memory"; memory?: Memory }
   | { kind: "routine"; routine?: Routine };
 
-export default function App({
+type AppProps = { api: ApiClient; storageScope: string; accountMenu: ReactNode };
+
+export default function App(props: AppProps) {
+  const [route, setRoute] = useState(() => window.location.hash);
+  useEffect(() => {
+    const change = () => setRoute(window.location.hash);
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
+  return route.startsWith("#/studio") ? (
+    <Studio
+      api={props.api}
+      accountMenu={props.accountMenu}
+      path={route.slice(8) || "/"}
+      onNavigate={(path) => {
+        window.location.hash = `/studio${path}`;
+      }}
+      onClose={() => {
+        window.location.hash = "";
+      }}
+    />
+  ) : (
+    <DocumentWorkspace {...props} />
+  );
+}
+
+function DocumentWorkspace({
   api,
   storageScope,
   accountMenu,
@@ -449,6 +477,15 @@ export default function App({
               ? `${activeCount} ${activeCount === 1 ? "task" : "tasks"} in progress`
               : "Your team is ready"}
           </div>
+          <button
+            className="sidebar-link"
+            onClick={() => {
+              window.location.hash = "/studio";
+            }}
+          >
+            <Layers3 size={17} />
+            Bot Studio<span>New</span>
+          </button>
           <button className="sidebar-link" onClick={() => setDocumentsOpen(true)}>
             <BookOpen size={17} />
             Knowledge<span>{library?.documents.length || ""}</span>

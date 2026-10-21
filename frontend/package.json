@@ -13,7 +13,8 @@
     "format": "prettier --write src tests index.html vite.config.ts *.json .prettierrc.json",
     "format:check": "prettier --check src tests index.html vite.config.ts *.json .prettierrc.json",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:studio": "node --test tests/browser/*.test.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.18.0",
@@ -27,6 +28,7 @@
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.64.1",
     "prettier": "^3.6.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.3"

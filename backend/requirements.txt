@@ -52,6 +52,7 @@ httptools==0.9.0
     # via uvicorn
 httpx==0.28.1
     # via
+    #   sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
     #   openai
     #   qdrant-client
 hyperframe==6.1.0

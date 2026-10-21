@@ -6,6 +6,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Response, UploadFile
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import APIStatusError
@@ -30,6 +32,8 @@ from app.schemas import (
     IngestResponse,
     UploadedDocument,
 )
+from app.studio.api import router as studio_router
+from app.studio.safety import redact
 from app.uploads import R2DocumentStore, StorageUnavailable, clean_filename, extract_document
 from app.workspaces import workspace_id
 
@@ -70,6 +74,22 @@ app.add_middleware(
 app.include_router(task_router)
 app.include_router(bots_router)
 app.include_router(routines_router)
+app.include_router(studio_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, exc):
+    if not request.url.path.startswith("/api/studio/"):
+        return await request_validation_exception_handler(request, exc)
+    from fastapi.responses import JSONResponse
+
+    # Do not echo rejected credential fields or arbitrary input values in API errors.
+    messages = [str(error["msg"]) for error in exc.errors()[:5]]
+    return JSONResponse(
+        status_code=422,
+        content={"detail": redact("Check the bot configuration: " + "; ".join(messages))},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.exception_handler(MemoryNotFound)

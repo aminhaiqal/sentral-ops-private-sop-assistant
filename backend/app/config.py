@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     harness_max_context_chars: int = Field(default=200000, ge=10000, le=2000000)
     harness_max_runtime_seconds: int = Field(default=600, ge=10, le=3600)
     harness_request_timeout_seconds: int = Field(default=60, ge=1, le=120)
+    brave_search_api_key: str | None = Field(default=None, repr=False)
+    studio_max_tokens: int = Field(default=40000, ge=4000, le=200000)
+    studio_max_api_calls: int = Field(default=8, ge=2, le=20)
+    studio_max_llm_calls: int = Field(default=4, ge=2, le=8)
+    studio_run_timeout_seconds: int = Field(default=240, ge=10, le=600)
+    studio_max_cost_usd: float = Field(default=0.50, gt=0, le=10)
+    studio_input_usd_per_million: float | None = Field(default=None, ge=0)
+    studio_output_usd_per_million: float | None = Field(default=None, ge=0)
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

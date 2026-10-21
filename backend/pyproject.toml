@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
     "openai>=1.57,<2",
+    "httpx>=0.28,<1",
     "qdrant-client>=1.13,<1.14",
     "boto3>=1.36,<2",
     "pypdf>=6.1,<7",
@@ -22,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<9", "httpx>=0.28,<1", "ruff>=0.15,<0.16"]
+dev = ["pytest>=8.3,<9", "ruff>=0.15,<0.16"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

@@ -9,6 +9,13 @@ import type {
   Routine,
   RoutineInput,
 } from "./types";
+import type {
+  StudioBot,
+  StudioCatalog,
+  StudioConfig,
+  StudioRun,
+  StudioRunSummary,
+} from "./studio/types";
 
 const API_URL = import.meta.env?.VITE_API_URL ?? "";
 
@@ -49,6 +56,30 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
     return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
   }
   return {
+    studioCatalog: (): Promise<StudioCatalog> => request("/api/studio/catalog"),
+    studioBots: (): Promise<StudioBot[]> => request("/api/studio/bots"),
+    studioBot: (id: string): Promise<StudioBot> =>
+      request(`/api/studio/bots/${encodeURIComponent(id)}`),
+    saveStudioBot: (configuration: StudioConfig, id?: string): Promise<StudioBot> =>
+      request(id ? `/api/studio/bots/${encodeURIComponent(id)}` : "/api/studio/bots", {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(configuration),
+      }),
+    deleteStudioBot: (id: string): Promise<void> =>
+      request(`/api/studio/bots/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    startStudioRun: (id: string, idempotency_key: string): Promise<StudioRun> =>
+      request(`/api/studio/bots/${encodeURIComponent(id)}/runs`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key }),
+      }),
+    studioRuns: (botId?: string): Promise<StudioRunSummary[]> =>
+      request(`/api/studio/runs${botId ? `?bot_id=${encodeURIComponent(botId)}` : ""}`),
+    studioRun: (id: string): Promise<StudioRun> =>
+      request(`/api/studio/runs/${encodeURIComponent(id)}`),
+    cancelStudioRun: (id: string): Promise<StudioRun> =>
+      request(`/api/studio/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    retryStudioRun: (id: string): Promise<StudioRun> =>
+      request(`/api/studio/runs/${encodeURIComponent(id)}/retry`, { method: "POST" }),
     getBots: (): Promise<Bot[]> => request("/api/bots"),
     starterBots: (): Promise<Bot[]> => request("/api/bots/starter", { method: "POST" }),
     saveBot: (data: BotInput, id?: string): Promise<Bot> =>
