@@ -14,7 +14,7 @@
     "format:check": "prettier --check src tests index.html vite.config.ts *.json .prettierrc.json",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:studio": "node --test tests/browser/*.test.mjs"
+    "test:browser": "node --test tests/browser/*.test.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.18.0",

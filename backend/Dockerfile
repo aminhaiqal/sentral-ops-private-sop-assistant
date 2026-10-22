@@ -10,7 +10,6 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ /app/backend/app/
-COPY data/ /app/data/
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /app/var \

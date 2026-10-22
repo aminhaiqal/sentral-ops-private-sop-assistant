@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sentral-ops-private-sop-assistant-backend"
 version = "0.1.0"
-description = "A source-backed SOP assistant for learning retrieval-augmented generation."
+description = "A minimal workspace for cited document tasks."
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
@@ -15,11 +15,6 @@ dependencies = [
     "pydantic-settings>=2.6,<3",
     "openai>=1.57,<2",
     "httpx>=0.28,<1",
-    "mcp>=2.3,<3",
-    "httpx2>=2.16,<3",
-    "jsonschema>=4.26,<5",
-    "Authlib>=1.9.1,<2",
-    "cryptography>=50.0.2,<51",
     "qdrant-client>=1.13,<1.14",
     "boto3>=1.36,<2",
     "pypdf>=6.1,<7",

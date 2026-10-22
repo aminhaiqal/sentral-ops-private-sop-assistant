@@ -2,7 +2,6 @@ import importlib.util
 import sys
 
 from app.config import PROJECT_ROOT, Settings
-from app.documents import load_documents
 
 
 def test_environment_example_loads_with_frontend_and_deployment_settings(monkeypatch):
@@ -11,7 +10,7 @@ def test_environment_example_loads_with_frontend_and_deployment_settings(monkeyp
 
     assert not settings.openai_api_key
     assert settings.cors_origins == ["http://localhost:5173"]
-    assert len(load_documents(settings.data_dir)) == 11
+    assert settings.app_name == "Axelyn"
 
 
 def test_defaults_load_root_environment_when_started_from_backend(tmp_path, monkeypatch):

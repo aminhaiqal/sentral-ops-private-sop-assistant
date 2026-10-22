@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import Settings
-from app.harness.memory import MemoryStore, initialize_memory, remember_completion
 from app.harness.models import TaskRequest, TaskSummary, TaskView
 
 
@@ -39,7 +38,6 @@ class TaskStore:
                 "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, state TEXT NOT NULL)"
             )
             db.execute("CREATE INDEX IF NOT EXISTS tasks_workspace ON tasks(workspace, created_at)")
-            initialize_memory(db)
 
     @contextmanager
     def connection(self):
@@ -53,24 +51,10 @@ class TaskStore:
             db.close()
 
     def create(self, workspace: str, request: TaskRequest, settings: Settings) -> TaskView:
-        with self.connection() as db:
-            return self.create_in(db, workspace, request, settings)
-
-    def create_in(
-        self,
-        db,
-        workspace: str,
-        request: TaskRequest,
-        settings: Settings,
-        *,
-        routine_id: str | None = None,
-    ) -> TaskView:
-        """Create inside the caller's transaction, including scheduled-run bookkeeping."""
         task_id = uuid.uuid4().hex
         timestamp = now()
         state = {
             **request.model_dump(),
-            "routine_id": routine_id,
             "turns": 0,
             "tokens": 0,
             "max_turns": settings.harness_max_turns,
@@ -88,12 +72,11 @@ class TaskStore:
             "events": [],
         }
         event(state, "queued", "Task accepted for autonomous execution.")
-        if request.bot_id:
-            MemoryStore.bot_row(db, workspace, request.bot_id)
-        db.execute(
-            "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?)",
-            (task_id, workspace, timestamp, timestamp, json.dumps(state)),
-        )
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?)",
+                (task_id, workspace, timestamp, timestamp, json.dumps(state)),
+            )
         return self.view(
             {
                 "id": task_id,
@@ -135,9 +118,6 @@ class TaskStore:
             },
             artifacts=list(state["artifacts"].values()),
             sources=list(state["sources"].values()),
-            bot_id=state.get("bot_id"),
-            routine_id=state.get("routine_id"),
-            memory_ids=state.get("memory_ids", []),
         )
 
     def get(self, workspace: str, task_id: str) -> TaskView:
@@ -174,8 +154,6 @@ class TaskStore:
                 "UPDATE tasks SET state=?, status=?, updated_at=? WHERE id=? AND status='running'",
                 (json.dumps(state), status, now(), task_id),
             )
-            if result.rowcount == 1 and status == "completed":
-                remember_completion(db, task_id, state)
         return result.rowcount == 1
 
     def is_running(self, task_id: str) -> bool:

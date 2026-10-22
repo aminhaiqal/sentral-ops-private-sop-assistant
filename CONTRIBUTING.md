@@ -1,16 +1,12 @@
 # Contributing
 
-Contributions should make this project easier to learn from or more useful to run.
-Small, focused pull requests are welcome. For a large feature or architectural change,
-open an issue first so we can agree on the direction.
+Keep the project focused on one document-task workflow. Preserve the existing license
+and attribution. Use fictional fixtures; keep real documents, tokens, and keys out of Git.
 
-## Development setup
+## Development
 
-Use Python 3.12, Node.js 24, npm, and Docker Compose. The backend's PDF subprocess
-uses POSIX resource limits; use macOS, Linux, or WSL for backend development. Native
-macOS runs use CPU and wall-clock limits; use Docker for the Linux memory cap as well.
-
-From the repository root:
+Use Python 3.12, Node.js 24, and Docker Compose. macOS, Linux, or WSL is required for
+the PDF subprocess resource limits. Docker also enforces the Linux memory cap.
 
 ```bash
 cp .env.example .env
@@ -18,90 +14,56 @@ make setup
 docker compose up -d qdrant
 ```
 
-Add an API key to `.env` for indexing and answers. You can work on tests, documentation,
-and most UI changes without one. R2 is only required for document uploads.
-For interactive use, also configure Clerk's publishable key and issuer in the root
-`.env`, as described in [configuration](docs/configuration.md#clerk-authentication).
-Tests generate their own RSA keys and session tokens and never contact Clerk.
-
-In one terminal:
+Configure the root environment as described in [Configuration](docs/configuration.md).
+Run these in separate terminals:
 
 ```bash
 cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload
+.venv/bin/uvicorn app.main:app --reload
 ```
 
-In another terminal:
+```bash
+cd backend
+.venv/bin/python -m app.harness.worker
+```
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Use `http://localhost:5173` consistently. The Vite development server proxies `/api`
-to the backend on port 8000. The backend reads the root `.env` regardless of its
-working directory. Use `PYTHON=/path/to/python3.12 make setup` if needed.
-
-Without Make, create `backend/.venv` with `python3.12 -m venv backend/.venv`, install
-`backend/requirements-dev.txt` using that environment's pip, then run `npm ci` in
-`frontend/`.
+Open `http://localhost:5173`. Vite proxies `/api` to the backend on port 8000.
 
 ## Checks
 
 ```bash
-make check       # Ruff, Prettier, pytest, frontend request/storage tests, TypeScript, Vite build
-make format      # Apply import sorting and formatting
-make test        # Backend tests only
-make build       # Frontend type check and production build
+make check                              # Formatting, backend/frontend tests, production build
+npm --prefix frontend run test:browser  # Browser workflow and responsive layout
+make format                             # Apply formatting
 ```
 
-The backend tests mock AI and object-storage calls and use Qdrant's in-memory mode.
-Do not add tests that spend API credits or depend on private credentials. Add focused
-regression coverage when changing behavior. A passing frontend build checks TypeScript
-types; it does not prove compatibility with the API or correct browser behavior.
+Backend tests mock providers and storage, generate their own auth keys, and use
+in-memory Qdrant. Browser tests use a mocked task API and do not contact Clerk or AI
+providers. Install Chromium once with `cd frontend && npx playwright install chromium`.
 
-Before opening a PR, run `make check`. For changes to containers or networking, also run:
+For container changes, also validate both Compose configurations and build:
 
 ```bash
 docker compose --env-file .env.example config --quiet
-APP_DOMAIN=assistant.example.com docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+APP_DOMAIN=assistant.example.com VITE_CLERK_PUBLISHABLE_KEY=pk_live_example CLERK_ISSUER_URL=https://clerk.example.com docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
 docker compose --env-file .env.example build
 ```
 
-For manual retrieval checks, use the questions in the README and
-[sample upload guide](sample-uploads/README.md). Check the answer, citations, excerpts,
-warnings, and Agent Trace. Mention which checks you ran in your PR.
-
-## Useful starting points
-
-- **Documentation:** improve setup instructions after trying them on a clean machine.
-- **Retrieval:** add a missed SOP question as a test, then adjust the query rules.
-- **Accessibility:** improve keyboard navigation and screen-reader feedback.
-- **Uploads:** add malformed-file and provider-failure regression cases.
-- **Evaluation:** add a small fictional question set with expected source documents.
-
-Keep sample data fictional. Preserve the existing license and attribution. Never
-include real internal documents, API keys, bucket contents, customer records, or
-private deployment details in an issue, test fixture, screenshot, or PR.
-
 ## Dependencies
 
-`backend/pyproject.toml` is the source for Python dependencies. The runtime and
-development requirements files are generated, pinned install sets. After changing
-dependencies, regenerate both with [uv](https://docs.astral.sh/uv/):
+`backend/pyproject.toml` defines Python dependencies. The requirements files pin their
+install sets. Regenerate both after a dependency change:
 
 ```bash
 uv pip compile backend/pyproject.toml --universal --python-version 3.12 --output-file backend/requirements.txt
 uv pip compile backend/pyproject.toml --extra dev --universal --python-version 3.12 --output-file backend/requirements-dev.txt
 ```
 
-Update `frontend/package-lock.json` with npm when changing frontend dependencies.
-Run `npm audit` in `frontend/` after updates. Dependency updates still need the normal
-tests and build checks.
-
-## Working together
-
-Describe the problem, the resulting behavior, and how you checked it. Share enough
-context to reproduce bugs. Be respectful, assume good intent, and keep feedback about
-the work. Report sensitive security issues through [SECURITY.md](SECURITY.md).
+Use npm to update the frontend lockfile when changing its dependencies. Describe the
+resulting behavior and validation in each PR. Report security issues through
+[SECURITY.md](SECURITY.md).

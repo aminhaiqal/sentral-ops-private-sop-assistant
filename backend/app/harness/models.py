@@ -14,9 +14,12 @@ class TaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     goal: str = Field(min_length=3, max_length=4000)
-    completion_criteria: str = Field(min_length=3, max_length=2000)
+    completion_criteria: str = Field(
+        default="Save a useful Markdown document that fulfills the request, cites source documents, and has been read back for verification.",
+        min_length=3,
+        max_length=2000,
+    )
     context: str = Field(default="", max_length=16000)
-    bot_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ResumeRequest(BaseModel):
@@ -40,8 +43,6 @@ class TaskEvent(BaseModel):
 
 class TaskSummary(BaseModel):
     id: str
-    bot_id: str | None = None
-    routine_id: str | None = None
     goal: str
     completion_criteria: str
     status: TaskStatus
@@ -56,7 +57,6 @@ class TaskSummary(BaseModel):
 
 
 class TaskView(TaskSummary):
-    memory_ids: list[str] = Field(default_factory=list)
     context: str
     artifacts: list[Artifact]
     sources: list[SourceSnippet]

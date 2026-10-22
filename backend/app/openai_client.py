@@ -47,26 +47,3 @@ class OpenAIClient:
             encoding_format="float",
         )
         return [item.embedding for item in response.data]
-
-    def generate_answer(self, system_prompt: str, user_prompt: str) -> str:
-        parameters = {}
-        model_name = self.settings.openai_chat_model.removeprefix("openai/")
-        if model_name.startswith("gpt-6"):
-            effort = self.settings.openai_reasoning_effort
-            if effort == "none" and model_name.startswith(("gpt-6-astra", "gpt-6.1-sol")):
-                effort = "low"
-            parameters["reasoning_effort"] = effort
-            if effort == "none":
-                parameters["temperature"] = 0.1
-        else:
-            parameters["temperature"] = 0.1
-
-        response = self.client.chat.completions.create(
-            model=self.settings.openai_chat_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            **parameters,
-        )
-        return response.choices[0].message.content or ""

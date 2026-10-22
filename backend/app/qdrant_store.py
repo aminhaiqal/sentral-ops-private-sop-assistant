@@ -33,7 +33,6 @@ class QdrantStore:
         result = self.client.count(
             collection_name=self.settings.qdrant_collection,
             exact=True,
-            count_filter=visible_sources(None),
         )
         return int(result.count)
 
@@ -41,14 +40,14 @@ class QdrantStore:
         self,
         chunks: list[DocumentChunk],
         embeddings: list[list[float]],
-        workspace_id: str | None = None,
+        workspace_id: str,
     ) -> None:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length.")
 
         points: list[models.PointStruct] = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
-            point_key = f"{workspace_id}:{chunk.chunk_id}" if workspace_id else chunk.chunk_id
+            point_key = f"{workspace_id}:{chunk.chunk_id}"
             point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, point_key))
             points.append(
                 models.PointStruct(
@@ -59,7 +58,7 @@ class QdrantStore:
                         "title": chunk.title,
                         "chunk_id": chunk.chunk_id,
                         "text": chunk.text,
-                        **({"workspace_id": workspace_id} if workspace_id else {}),
+                        "workspace_id": workspace_id,
                     },
                 )
             )
@@ -72,7 +71,7 @@ class QdrantStore:
             )
 
     def search(
-        self, query_embedding: list[float], limit: int, workspace_id: str | None = None
+        self, query_embedding: list[float], limit: int, workspace_id: str
     ) -> list[SourceSnippet]:
         self.ensure_collection()
         response = self.client.query_points(
@@ -119,13 +118,9 @@ class QdrantStore:
         )
 
 
-def visible_sources(workspace_id: str | None) -> models.Filter:
-    public = models.IsEmptyCondition(is_empty=models.PayloadField(key="workspace_id"))
-    if not workspace_id:
-        return models.Filter(must=[public])
+def visible_sources(workspace_id: str) -> models.Filter:
     return models.Filter(
-        should=[
-            public,
+        must=[
             models.FieldCondition(key="workspace_id", match=models.MatchValue(value=workspace_id)),
         ]
     )

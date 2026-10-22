@@ -42,7 +42,7 @@ def test_responses_adapter_preserves_tool_and_reasoning_items(model_name, effort
                         "type": "function_call",
                         "id": "fc_test",
                         "call_id": "call_test",
-                        "name": "search_sops",
+                        "name": "search_documents",
                         "arguments": '{"query":"policy","limit":1}',
                     },
                 ],

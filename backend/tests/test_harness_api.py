@@ -8,9 +8,7 @@ def test_task_api_isolates_owners_and_hides_runtime_transcript(
     import app.main as main
     import app.workspaces as workspaces
 
-    settings = Settings(
-        _env_file=None, auto_ingest_on_startup=False, harness_db_path=tmp_path / "api.sqlite3"
-    )
+    settings = Settings(_env_file=None, harness_db_path=tmp_path / "api.sqlite3")
     for module in (api, main, workspaces):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     with authenticated_client(main.app) as owner, authenticated_client(main.app) as stranger:
@@ -84,3 +82,35 @@ def test_blank_tasks_and_client_supplied_runtime_overrides_are_rejected(
             ).status_code
             == 422
         )
+
+
+def test_single_input_tasks_need_no_bot_and_retired_routes_are_absent(
+    tmp_path, monkeypatch, authenticated_client
+):
+    import app.harness.api as api
+    import app.main as main
+
+    settings = Settings(_env_file=None, harness_db_path=tmp_path / "api.sqlite3")
+    monkeypatch.setattr(api, "get_settings", lambda: settings)
+    with authenticated_client(main.app) as browser:
+        response = browser.post("/api/tasks", json={"goal": "Prepare a cited document"})
+        assert response.status_code == 202
+        task = response.json()
+        assert task["completion_criteria"]
+        assert not {"bot_id", "routine_id", "memory_ids"} & task.keys()
+        assert (
+            browser.post(
+                "/api/tasks", json={"goal": "Prepare a report", "bot_id": "old-bot"}
+            ).status_code
+            == 422
+        )
+        for path in [
+            "/api/bots",
+            "/api/routines",
+            "/api/studio/catalog",
+            "/api/connections",
+            "/api/demo-questions",
+        ]:
+            assert browser.get(path).status_code == 404
+        for path in ["/api/ask", "/api/ingest"]:
+            assert browser.post(path, json={"question": "A question"}).status_code == 404

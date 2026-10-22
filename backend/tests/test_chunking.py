@@ -1,10 +1,6 @@
 import pytest
 
-from app.chunking import chunk_markdown, slugify, word_count
-
-
-def test_slugify_creates_stable_ids():
-    assert slugify("Customer Refund & Credit Note SOP") == "customer-refund-credit-note-sop"
+from app.chunking import chunk_markdown, word_count
 
 
 def test_chunk_markdown_returns_deterministic_chunk_ids():

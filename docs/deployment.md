@@ -19,7 +19,7 @@ chmod 600 .env
 ```
 
 Set your AI key and append `APP_DOMAIN=assistant.example.com` using your actual
-hostname, without `https://` or a path. Configure R2 only if you need uploads.
+hostname, without `https://` or a path. Configure R2 for source-document uploads.
 Set `VITE_CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER_URL` for your Clerk production instance,
 and configure that frontend domain in Clerk. The publishable key is a frontend build
 argument; changing it requires rebuilding the frontend image. Clerk secret keys are
@@ -79,17 +79,11 @@ docker compose -f docker-compose.prod.yml up -d --build --force-recreate --wait 
 docker compose -f docker-compose.prod.yml logs --tail=100 backend
 ```
 
-## Indexing and health
-
-The public proxy blocks `POST /api/ingest`. Run shared-corpus ingestion on the server:
-
-```bash
-docker compose -f docker-compose.prod.yml exec backend python -m app.ingestion
-```
+## Health
 
 `GET /api/health` checks that the API is running. `GET /api/ready` additionally checks
 Qdrant connectivity. Neither verifies provider credits, model availability, or upload
-storage. Ask a known fictional SOP question to check the complete retrieval path.
+storage. Upload a fictional document and submit a task to check the complete flow.
 The readiness endpoint does not check the harness worker. Inspect `docker compose
 -f docker-compose.prod.yml logs --tail=100 worker` and submit a fictional task to verify
 background execution.
@@ -98,10 +92,8 @@ background execution.
 
 Qdrant vectors live in the `qdrant_storage` volume. Caddy certificates and configuration
 use `caddy_data` and `caddy_config`. Upload originals, extracted text, and metadata live
-in the configured R2 bucket. Bot conversations use server-backed task history.
+in the configured R2 bucket.
 Task transcripts, retrieved evidence, and Markdown artifacts live in `harness_state`.
-Bot profiles, routines, preferences, and cross-job outcome records share that database
-and volume. Only the selected bot ID is saved in account-scoped browser storage.
 Signing in to the same Clerk account restores access from another device or session.
 Legacy anonymous workspace cookies no longer grant access to private endpoints.
 
@@ -111,7 +103,5 @@ Back up the task database separately using SQLite's backup facility, or stop the
 API and worker and take a consistent database/WAL backup. Do not copy only a live SQLite file
 while ignoring its WAL. Automated task retention and deletion are not implemented.
 
-Shared-corpus ingestion upserts stable chunk IDs without deleting old chunks. To rebuild
-after removing SOPs or changing embeddings, select a fresh `QDRANT_COLLECTION`, restart
-the backend, and ingest. Existing R2 upload metadata is not reset automatically; plan
-upload reindexing separately before migrating a populated instance.
+Changing embedding dimensions requires a compatible Qdrant collection and deliberate
+reindexing of uploads. Existing R2 metadata is not reset automatically.

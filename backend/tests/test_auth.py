@@ -145,35 +145,28 @@ def test_unauthenticated_requests_cannot_use_legacy_cookies(monkeypatch, tmp_pat
     import app.harness.api as api
     import app.main as main
 
-    settings = Settings(
-        _env_file=None, auto_ingest_on_startup=False, harness_db_path=tmp_path / "tasks.sqlite3"
-    )
+    settings = Settings(_env_file=None, harness_db_path=tmp_path / "tasks.sqlite3")
     monkeypatch.setattr(main, "get_settings", lambda: settings)
     monkeypatch.setattr(api, "get_settings", lambda: settings)
     with TestClient(main.app, cookies={"sentral_workspace": "a" * 64}) as client:
         for path in [
             "/api/documents",
             "/api/tasks",
-            "/api/bots",
             "/api/documents/unknown/download",
         ]:
             response = client.get(path)
             assert response.status_code == 401
             assert response.headers["cache-control"] == "private, no-store"
-        assert client.post("/api/ask", json={"question": "What is the SOP?"}).status_code == 401
-        assert client.post("/api/ingest").status_code == 401
         assert client.get("/api/health").status_code == 200
 
 
-def test_same_account_reaches_memory_on_a_second_device_and_cookie_cannot_override_owner(
+def test_same_account_reaches_tasks_on_a_second_device_and_cookie_cannot_override_owner(
     monkeypatch, tmp_path, authenticated_client
 ):
     import app.harness.api as api
     import app.main as main
 
-    settings = Settings(
-        _env_file=None, auto_ingest_on_startup=False, harness_db_path=tmp_path / "tasks.sqlite3"
-    )
+    settings = Settings(_env_file=None, harness_db_path=tmp_path / "tasks.sqlite3")
     for module in (main, api):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     with (
@@ -181,11 +174,10 @@ def test_same_account_reaches_memory_on_a_second_device_and_cookie_cannot_overri
         authenticated_client(main.app, "user_owner", "sess_other_device") as second,
         authenticated_client(main.app, "user_stranger") as stranger,
     ):
-        bot = first.post("/api/bots", json={"name": "Ops", "role": "Prepare guides"}).json()
-        first.put(f"/api/bots/{bot['id']}/preferences/style", json={"value": "brief"})
-        assert second.get(f"/api/bots/{bot['id']}/memories").json()[0]["value"] == "brief"
+        task = first.post("/api/tasks", json={"goal": "Prepare a cited report"}).json()
+        assert second.get(f"/api/tasks/{task['id']}").json()["goal"] == "Prepare a cited report"
         owner_scope = identity_workspace(
             SessionIdentity("https://clerk.test", "user_owner", "sess_first")
         )
         stranger.cookies.set("sentral_workspace", owner_scope)
-        assert stranger.get(f"/api/bots/{bot['id']}/memories").status_code == 404
+        assert stranger.get(f"/api/tasks/{task['id']}").status_code == 404

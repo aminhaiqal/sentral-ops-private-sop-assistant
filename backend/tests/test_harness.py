@@ -54,7 +54,7 @@ def result(messages, key):
 
 def successful_steps():
     return [
-        call("search_sops", {"query": "delivery escalation", "limit": 3}),
+        call("search_documents", {"query": "delivery escalation", "limit": 3}),
         call(
             "write_artifact",
             {"title": "Escalation checklist", "content": "Contact Operations. [S1]"},
@@ -124,7 +124,7 @@ def test_unknown_tools_and_invalid_arguments_do_not_execute(setup):
     model = ScriptedModel(
         [
             call("run_shell", {"command": "anything"}),
-            call("search_sops", {"query": "policy", "limit": "3", "workspace_id": "stranger"}),
+            call("search_documents", {"query": "policy", "limit": "3", "workspace_id": "stranger"}),
             call("request_input", {"question": "Which document should I use?"}),
         ]
     )
@@ -155,7 +155,7 @@ def test_completion_requires_current_readback_and_known_citations(setup):
     tools.execute("read_artifact", read, ctx)
     with pytest.raises(ToolError, match="valid"):
         tools.execute("complete_task", complete, ctx)
-    tools.execute("search_sops", json.dumps({"query": "policy", "limit": 1}), ctx)
+    tools.execute("search_documents", json.dumps({"query": "policy", "limit": 1}), ctx)
     tools.execute(
         "write_artifact", json.dumps({"title": "Checklist", "content": "Policy. [S1]"}), ctx
     )
@@ -285,7 +285,7 @@ def test_transient_retry_count_is_bounded(setup, monkeypatch):
 
 def test_provider_parallel_calls_cannot_bypass_sequential_execution(setup):
     settings, store, tools, task, lookups = setup
-    batch = call("search_sops", {"query": "policy", "limit": 1})
+    batch = call("search_documents", {"query": "policy", "limit": 1})
     batch.output += call("write_artifact", {"title": "Untested", "content": "Unverified"}).output
     model = ScriptedModel([batch, call("request_input", {"question": "Need a document"})])
     Harness(store, model, tools, settings).run(store.claim())
@@ -295,7 +295,7 @@ def test_provider_parallel_calls_cannot_bypass_sequential_execution(setup):
 
 def test_incomplete_response_is_counted_but_does_not_execute_tools(setup):
     settings, store, tools, task, lookups = setup
-    turn = call("search_sops", {"query": "policy", "limit": 1})
+    turn = call("search_documents", {"query": "policy", "limit": 1})
     turn.completed = False
     Harness(store, ScriptedModel([turn]), tools, settings).run(store.claim())
     assert not lookups
@@ -334,7 +334,7 @@ def test_resume_waits_for_pending_call_output_before_adding_user_context(setup):
     settings, store, tools, task, _ = setup
     claimed = store.claim()
     state = json.loads(claimed["state"])
-    pending = call("search_sops", {"query": "policy", "limit": 1}).output
+    pending = call("search_documents", {"query": "policy", "limit": 1}).output
     state["pending"] = pending
     state["messages"].extend(pending)
     store.checkpoint(task.id, state, "failed")
@@ -358,3 +358,19 @@ def test_worker_once_processes_a_real_persistent_queue(setup, monkeypatch):
     monkeypatch.setattr(worker, "document_tools", lambda _, **kwargs: tools)
     worker.main()
     assert store.get("owner", task.id).status == "completed"
+
+
+def test_existing_tasks_remain_readable_and_resumable_without_bot_tables(setup):
+    settings, store, tools, task, _ = setup
+    claimed = store.claim()
+    state = json.loads(claimed["state"])
+    state.update(bot_id="retired-profile", routine_id="retired-routine", memory_ids=["old-memory"])
+    store.checkpoint(task.id, state, "needs_input")
+    reopened = TaskStore(settings.harness_db_path)
+    assert reopened.get("owner", task.id).goal == task.goal
+    reopened.resume("owner", task.id, "Continue this document task")
+    Harness(reopened, ScriptedModel(successful_steps()), tools, settings).run(reopened.claim())
+    assert reopened.get("owner", task.id).status == "completed"
+    with reopened.connection() as db:
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert tables == {"tasks"}

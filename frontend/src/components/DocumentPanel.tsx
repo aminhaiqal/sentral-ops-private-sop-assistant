@@ -40,13 +40,13 @@ export default function DocumentPanel(props: Props) {
     >
       <div className="document-panel-inner">
         <header className="document-header">
-          <h2 id="documents-title">Knowledge</h2>
+          <h2 id="documents-title">Documents</h2>
           <button className="icon-button" aria-label="Close documents" onClick={props.onClose}>
             <X size={20} />
           </button>
         </header>
         <p className="panel-description">
-          Your bots use these documents to research tasks and create deliverables.
+          Add source documents for your tasks. They stay available in your account.
         </p>
         <button
           type="button"
@@ -98,9 +98,7 @@ export default function DocumentPanel(props: Props) {
                   </button>
                   <span>
                     {fileSize(doc.size_bytes)} ·{" "}
-                    {doc.status === "indexed"
-                      ? "Ready for your bots"
-                      : "Saved · Not searchable yet"}
+                    {doc.status === "indexed" ? "Ready to use" : "Saved · Not searchable yet"}
                   </span>
                   {doc.indexing_error && <p>{doc.indexing_error}</p>}
                 </div>
@@ -142,13 +140,6 @@ export default function DocumentPanel(props: Props) {
             ))}
           </ul>
         )}
-        <div className="included-library">
-          <FileText size={17} />
-          <div>
-            <strong>Sentral Ops sample library</strong>
-            <p>{props.library?.demo_documents ?? 11} included SOPs · Fictional company data</p>
-          </div>
-        </div>
       </div>
     </dialog>
   );

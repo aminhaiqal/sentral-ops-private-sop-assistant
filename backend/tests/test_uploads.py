@@ -10,7 +10,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from qdrant_client import QdrantClient
 
 from app.chunking import DocumentChunk
-from app.config import PROJECT_ROOT, Settings
+from app.config import Settings
 from app.qdrant_store import QdrantStore
 from app.uploads import extract_document
 
@@ -45,7 +45,6 @@ def upload_app(monkeypatch):
     settings = Settings(
         _env_file=None,
         openai_api_key=None,
-        auto_ingest_on_startup=False,
         r2_endpoint="https://example.r2.cloudflarestorage.com",
         r2_bucket="test",
         r2_access_key_id="test",
@@ -149,7 +148,6 @@ def test_retry_indexes_saved_file_without_duplicate_vectors(
 def test_provider_error_keeps_upload_safe_and_retry_recovers(
     upload_app, monkeypatch, caplog, status, code, expected_action, authenticated_client
 ):
-    import app.main as main
     import app.uploads as uploads
 
     app, settings, _ = upload_app
@@ -177,15 +175,7 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
                 raise error
             return [[1.0] + [0.0] * 1535 for _ in texts]
 
-    class AnswerAssistant:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def ask(self, *args):
-            raise error
-
     monkeypatch.setattr(uploads, "OpenAIClient", Embeddings)
-    monkeypatch.setattr(main, "RagAssistant", AnswerAssistant)
     content = b"# Visitor policy\n\nVisitors must sign in at reception."
     with authenticated_client(app) as browser:
         response = browser.post("/api/documents", files={"file": ("visitors.md", content)})
@@ -196,11 +186,6 @@ def test_provider_error_keeps_upload_safe_and_retry_recovers(
         assert secret not in response.text
         assert secret not in caplog.text
         assert browser.get(f"/api/documents/{doc['id']}/download").content == content
-        failed_answer = browser.post("/api/ask", json={"question": "How do visitors sign in?"})
-        assert failed_answer.status_code == 503
-        assert expected_action in failed_answer.json()["detail"]
-        assert secret not in failed_answer.text
-        assert secret not in caplog.text
         Embeddings.failing = False
         recovered = browser.post(f"/api/documents/{doc['id']}/index").json()
         assert recovered["status"] == "indexed"
@@ -237,7 +222,8 @@ def test_upload_size_limit_is_enforced_before_storage(upload_app, authenticated_
         assert not storage.objects
 
 
-def test_pdf_text_extraction_and_password_protection():
+def test_pdf_text_extraction_and_password_protection(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     writer = PdfWriter()
     page = writer.add_blank_page(width=300, height=200)
     page[NameObject("/Resources")] = DictionaryObject(
@@ -270,41 +256,32 @@ def test_pdf_text_extraction_and_password_protection():
         extract_document("locked.pdf", encrypted.getvalue())
 
 
-@pytest.mark.parametrize(
-    "filename",
-    [
-        "01-visitor-registration.pdf",
-        "02-it-equipment-loans.pdf",
-        "03-warehouse-cycle-counts.pdf",
-        "04-meeting-room-bookings.pdf",
-    ],
-)
-def test_sample_pdf_extracts_outside_backend_directory(filename, tmp_path, monkeypatch):
-    content = (PROJECT_ROOT / "sample-uploads" / filename).read_bytes()
-    monkeypatch.chdir(tmp_path)
-
-    text, pages = extract_document(filename, content)
-
-    assert pages == 1
-    assert len(text) > 100
-    assert "Sentral Ops" in text
-
-
 def test_vector_search_never_returns_another_workspaces_uploads():
     settings = Settings(_env_file=None, openai_embedding_dimensions=3)
     store = QdrantStore.__new__(QdrantStore)
     store.settings = settings
     store.client = QdrantClient(":memory:")
     store.ensure_collection()
-    public = DocumentChunk("demo-1", "demo", "Demo", "Shared SOP")
-    private = DocumentChunk("upload-shared-1", "upload-shared", "Private", "Private SOP")
-    store.upsert_chunks([public], [[1.0, 0.0, 0.0]])
+    from qdrant_client.http import models
+
+    # A legacy shared sample must remain invisible after the demo corpus is retired.
+    store.client.upsert(
+        settings.qdrant_collection,
+        [
+            models.PointStruct(
+                id=1,
+                vector=[1.0, 0.0, 0.0],
+                payload={"document_id": "legacy-demo", "text": "Sample"},
+            )
+        ],
+    )
+    private = DocumentChunk("upload-shared-1", "upload-shared", "Private", "Private document")
     store.upsert_chunks([private], [[1.0, 0.0, 0.0]], workspace_id="a" * 64)
     store.upsert_chunks([private], [[0.0, 1.0, 0.0]], workspace_id="b" * 64)
-    assert store.client.count(settings.qdrant_collection).count == 3
-    assert store.count() == 1
-    assert [source.document_id for source in store.search([1.0, 0.0, 0.0], 8)] == ["demo"]
-    assert len(store.search([1.0, 0.0, 0.0], 8, "a" * 64)) == 2
+    assert store.count() == 3
+    assert [source.document_id for source in store.search([1.0, 0.0, 0.0], 8, "a" * 64)] == [
+        "upload-shared"
+    ]
     store.delete_document("upload-shared", "a" * 64)
-    assert len(store.search([1.0, 0.0, 0.0], 8, "a" * 64)) == 1
-    assert len(store.search([0.0, 1.0, 0.0], 8, "b" * 64)) == 2
+    assert store.search([1.0, 0.0, 0.0], 8, "a" * 64) == []
+    assert len(store.search([0.0, 1.0, 0.0], 8, "b" * 64)) == 1

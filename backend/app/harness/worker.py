@@ -6,18 +6,13 @@ import argparse
 import fcntl
 import signal
 import threading
-import time
 from contextlib import contextmanager
 
 from app.config import get_settings
-from app.harness.memory import MemoryStore
 from app.harness.model import ResponsesModel
-from app.harness.routines import RoutineStore
 from app.harness.runner import Harness
 from app.harness.store import TaskStore
 from app.harness.tools import document_tools
-from app.studio.runtime import StudioRuntime
-from app.studio.store import StudioStore
 
 
 @contextmanager
@@ -41,31 +36,13 @@ def main() -> None:
     args = parser.parse_args()
     settings = get_settings()
     store = TaskStore(settings.harness_db_path.resolve())
-    routines = RoutineStore(store, settings)
-    studio = StudioStore(store)
     stop = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
     with worker_lock(store):
         store.recover()
-        studio.recover()
-        next_dispatch = 0.0
-        prefer_studio = True
         while not stop.is_set():
-            if time.monotonic() >= next_dispatch:
-                routines.dispatch()
-                next_dispatch = time.monotonic() + 30
-            studio_run = studio.claim() if prefer_studio else None
-            task = store.claim() if studio_run is None else None
-            if studio_run is None and task is None:
-                studio_run = studio.claim()
-            if studio_run is not None:
-                StudioRuntime(studio, settings).run(studio_run, stop.is_set)
-                prefer_studio = False
-                if args.once:
-                    return
-                continue
-            prefer_studio = True
+            task = store.claim()
             if task is None:
                 if args.once:
                     return
@@ -74,9 +51,7 @@ def main() -> None:
             model = None
             try:
                 model = ResponsesModel(settings)
-                Harness(
-                    store, model, document_tools(settings, memory=MemoryStore(store)), settings
-                ).run(task, stop.is_set)
+                Harness(store, model, document_tools(settings), settings).run(task, stop.is_set)
             except Exception as exc:
                 import json
 
@@ -88,7 +63,7 @@ def main() -> None:
             if args.once:
                 return
             # Give API controls a chance to run even when tasks repeatedly fail immediately.
-            time.sleep(0.05)
+            stop.wait(0.05)
 
 
 if __name__ == "__main__":

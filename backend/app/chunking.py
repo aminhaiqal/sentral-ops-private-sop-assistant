@@ -12,12 +12,6 @@ class DocumentChunk:
     text: str
 
 
-def slugify(value: str) -> str:
-    value = value.lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    return value.strip("-") or "document"
-
-
 def word_count(value: str) -> int:
     return len(re.findall(r"\S+", value))
 
@@ -42,7 +36,7 @@ def chunk_markdown(
     overlap_words: int = 35,
 ) -> list[DocumentChunk]:
     if max_words < 80:
-        raise ValueError("max_words must be at least 80 for useful SOP chunks.")
+        raise ValueError("max_words must be at least 80 for useful document chunks.")
     if overlap_words >= max_words:
         raise ValueError("overlap_words must be smaller than max_words.")
 

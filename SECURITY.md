@@ -1,56 +1,33 @@
 # Security
 
-## Reporting a vulnerability
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/aminhaiqal/sentral-ops-private-sop-assistant/security/advisories/new).
+Use fictional reproduction data and redact credentials. Security fixes target `main`;
+there is no guaranteed response time.
 
-Please use [GitHub's private vulnerability reporting](https://github.com/aminhaiqal/sentral-ops-private-sop-assistant/security/advisories/new).
-Include the affected version or commit, reproduction steps, and impact. Use fictional
-data and redact credentials. If private reporting is unavailable, use the contact links
-on the [maintainer's profile](https://github.com/aminhaiqal) to arrange a private report.
-Do not post credentials, private documents, or exploit details in a public issue.
+## Boundaries
 
-Security fixes currently target the latest `main` branch. There is no supported release
-series or guaranteed response time.
+- Private endpoints require a verified Clerk session bearer token. Signatures, issuer,
+  time claims, user/session identity, and authorized frontend origins are checked.
+  Missing configuration fails closed. Legacy workspace cookies grant no access.
+- Workspaces belong to individual accounts. Team permissions, global rate limiting,
+  a security audit log, and automated retention are not implemented.
+- Source text is sent to the configured AI provider for embeddings and task execution.
+  R2 stores originals, extracted text, and metadata. SQLite stores task transcripts,
+  retrieved excerpts, activity, and results without application-level encryption.
+- Deleting a source does not erase its excerpts from earlier tasks or backups.
+  Signing out does not delete server-side work. Retention is operator-managed.
+- Task and upload requests can consume provider credits and storage. Worker execution
+  limits do not guarantee a hard spending cap.
+- Prompts and citation-label checks do not guarantee factual accuracy, complete
+  evidence support, or protection from prompt injection.
 
-## Current boundaries
+Review access, retention, provider data-processing terms, and operational controls
+before handling sensitive documents.
 
-This is an educational application with fictional fixtures, not a complete private
-document platform. In particular:
+## Deployment
 
-- Private endpoints require a verified Clerk session bearer token. Signature, issuer,
-  time claims, user/session identity, and authorized frontend origin are checked.
-  Missing configuration fails closed; browser workspace cookies cannot authorize access.
-- Workspaces belong to individual Clerk accounts. Team/organization permissions,
-  rate limiting, and a security audit log are not implemented.
-- Model prompts and keyword rules cannot guarantee protection from prompt injection,
-  data disclosure, fabricated citations, or incorrect operational advice.
-- Text is sent to the configured AI provider for embeddings and answer generation.
-  Upload originals, extracted text, and metadata are stored in R2.
-- Browser history can retain answer text and snippets after a source document is deleted.
-  Signing out does not delete stored uploads or local chat caches. Retention is operator-managed.
-- Authenticated question and upload routes can consume provider credits and storage. The
-  HTTPS proxy blocks shared-corpus ingestion, but it does not restrict these other routes.
-- Task submission can also consume provider credits asynchronously. Task transcripts,
-  retrieved excerpts, and artifacts persist in the local SQLite database. Task events
-  describe execution; they are not a security audit log. Workspace isolation and
-  retention limitations apply to tasks as well as uploads.
-- Bot profiles, owner preferences, and artifact-check outcome memories share that
-  SQLite database, scoped by workspace and bot. The database is not encrypted by this
-  application. Deleting a memory prevents future retrieval but does not erase prior
-  task transcripts, model outputs, artifacts, or backups. Retrieved memory is sent to
-  the configured model provider when the bot works on a task.
-
-Before handling real internal documents, review the account access policy and add team
-authorization where needed, request and spending limits, retention and deletion procedures, audit logging, and
-monitoring. Review the data-processing terms of your AI and storage providers.
-
-## Secrets and deployment
-
-Keep `.env`, credentials, keys, real documents, and backups out of Git. The ignore rules
-and CI secret scanner are safeguards, not proof that a file is safe to publish. If a
-credential is exposed, revoke it at the provider; deleting it from a later commit is
-insufficient.
-
-Local Compose publishes services only on loopback. The HTTPS example keeps FastAPI and
-Qdrant off host ports, binds token authorization to the frontend origin, and stores certificates in volumes.
-Keep R2 private and scope its credentials to the required bucket. See
-[deployment](docs/deployment.md) for configuration and persistence details.
+Keep `.env`, credentials, real documents, and backups out of Git. Revoke any exposed
+credential at its provider. CI secret scanning is a safeguard, not proof of safety.
+Local Compose exposes services only on loopback. The HTTPS example keeps FastAPI and
+Qdrant off host ports. Keep the R2 bucket private and its credentials scoped.
+See [Deployment](docs/deployment.md) for persistence and backups.

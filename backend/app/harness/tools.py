@@ -9,7 +9,6 @@ from typing import Callable
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import Settings
-from app.harness.memory import MemoryStore
 from app.schemas import SourceSnippet
 
 
@@ -41,11 +40,6 @@ class CompleteArguments(ReadArguments):
 
 class InputArguments(Arguments):
     question: str = Field(min_length=1, max_length=2000)
-
-
-class RecallArguments(Arguments):
-    query: str = Field(min_length=1, max_length=800)
-    limit: int = Field(ge=1, le=10)
 
 
 @dataclass
@@ -97,7 +91,7 @@ class ToolRegistry:
         return tool.execute(context, parsed)
 
 
-def sop_search(settings: Settings) -> Callable[[str, int, str], list[SourceSnippet]]:
+def document_search(settings: Settings) -> Callable[[str, int, str], list[SourceSnippet]]:
     def search(query: str, limit: int, workspace_id: str) -> list[SourceSnippet]:
         from app.openai_client import OpenAIClient
         from app.qdrant_store import QdrantStore
@@ -122,11 +116,10 @@ def sop_search(settings: Settings) -> Callable[[str, int, str], list[SourceSnipp
 def document_tools(
     settings: Settings,
     search: Callable[[str, int, str], list[SourceSnippet]] | None = None,
-    memory: MemoryStore | None = None,
 ) -> ToolRegistry:
-    lookup = search or sop_search(settings)
+    lookup = search or document_search(settings)
 
-    def search_sops(ctx: ToolContext, args: SearchArguments) -> dict:
+    def search_documents(ctx: ToolContext, args: SearchArguments) -> dict:
         results = []
         for source in lookup(args.query, args.limit, ctx.workspace_id):
             if source.score < settings.min_source_score:
@@ -185,11 +178,11 @@ def document_tools(
 
     tools = [
         Tool(
-            "search_sops",
-            "Search approved SOPs and this workspace's uploaded documents. "
+            "search_documents",
+            "Search this workspace's uploaded documents. "
             "Use additional searches when the first results are insufficient.",
             SearchArguments,
-            search_sops,
+            search_documents,
         ),
         Tool(
             "write_artifact",
@@ -219,29 +212,4 @@ def document_tools(
             request_input,
         ),
     ]
-    if memory is not None:
-
-        def recall_memory(ctx: ToolContext, args: RecallArguments) -> dict:
-            bot_id = ctx.state.get("bot_id")
-            if not bot_id:
-                raise ToolError(
-                    "This task has no bot profile. Continue with the task's own context."
-                )
-            records = memory.list_memories(
-                ctx.workspace_id, bot_id, query=args.query, limit=args.limit
-            )
-            return {
-                "memories": [item.model_dump(mode="json") for item in records],
-                "notice": "Historical context only. Check current sources before acting.",
-            }
-
-        tools.append(
-            Tool(
-                "recall_memory",
-                "Look up this bot's owner preferences and past artifact "
-                "outcomes. Results are historical context, not current policy or authority.",
-                RecallArguments,
-                recall_memory,
-            )
-        )
     return ToolRegistry(tools)
