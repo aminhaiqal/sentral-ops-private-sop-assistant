@@ -38,6 +38,11 @@ produce setup instructions and a saved configuration error.
 
 See [Bot Studio setup, architecture and verification](docs/bot-studio.md).
 
+**Connections** adds Google Drive through Pipedream MCP. Connect your account,
+search and preview files, then select up to two documents as a bot's background
+context. Drive access is optional and restricted to reading; Google authorization
+requires server configuration. See [Google Drive setup](docs/google-drive-connections.md).
+
 ## Run locally
 
 You need Docker Compose and an API key for the configured AI provider. API requests
@@ -210,8 +215,9 @@ the same code checks, validates container builds, and scans Git history for secr
 ## Scope
 
 This is an educational reference application with Clerk authentication and individual
-account workspaces. It has no team/organization permissions, rate limiting, document
-approval workflow, or live business-system integration. Model citations and rule-based
+account workspaces. It has no team/organization permissions, global API rate limiting,
+or document approval workflow. Google Drive connections have a separate account-scoped
+rate limit and require configured Pipedream credentials. Model citations and rule-based
 warnings need human review and can be wrong. Browser chat history stays on the device,
 scoped by account; documents, tasks, and bot memory persist on the backend.
 

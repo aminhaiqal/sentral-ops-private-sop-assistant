@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import get_settings
+from app.connections.store import ConnectionStore
 from app.harness.store import TaskStore
 from app.studio.models import BotConfig, RunRequest, RunSummary, RunView, StudioBot
 from app.studio.registry import REGISTRY, TEMPLATES
@@ -13,6 +14,13 @@ router = APIRouter(prefix="/api/studio", tags=["Bot Studio"])
 
 def studio_store():
     return StudioStore(TaskStore(get_settings().harness_db_path))
+
+
+def validate_drive(config, workspace, store):
+    if config.drive_source:
+        ConnectionStore(store.tasks, get_settings()).owned(
+            workspace, config.drive_source.connection_id
+        )
 
 
 def call(operation):
@@ -64,10 +72,10 @@ def catalog(workspace: str = Depends(workspace_id)):
             },
         ],
         "manual_only": True,
-        "credentials": "Server-managed connections. Credentials are never returned to the browser or stored in bot instructions.",
+        "credentials": "Search and AI credentials are server-managed. Connect personal Google Drive accounts in Connections. Provider credentials are never returned to the browser or stored in bot instructions.",
         "limits": {
             "max_prospects": 8,
-            "max_steps": 4,
+            "max_steps": 5,
             "max_api_calls": settings.studio_max_api_calls,
             "max_llm_calls": settings.studio_max_llm_calls,
             "max_tokens": settings.studio_max_tokens,
@@ -86,7 +94,11 @@ def create_bot(
     workspace: str = Depends(workspace_id),
     store: StudioStore = Depends(studio_store),
 ):
-    return call(lambda: store.save_bot(workspace, request))
+    def save():
+        validate_drive(request, workspace, store)
+        return store.save_bot(workspace, request)
+
+    return call(save)
 
 
 @router.get("/bots/{bot_id}", response_model=StudioBot)
@@ -103,7 +115,11 @@ def edit_bot(
     workspace: str = Depends(workspace_id),
     store: StudioStore = Depends(studio_store),
 ):
-    return call(lambda: store.save_bot(workspace, request, bot_id))
+    def save():
+        validate_drive(request, workspace, store)
+        return store.save_bot(workspace, request, bot_id)
+
+    return call(save)
 
 
 @router.delete("/bots/{bot_id}", status_code=204)

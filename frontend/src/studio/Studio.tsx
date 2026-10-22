@@ -20,11 +20,20 @@ import type { StudioBot, StudioCatalog, StudioRun, StudioRunSummary } from "./ty
 import StudioForm, { SKILL_ICONS } from "./StudioForm";
 import ExecutionDetails, { dateTime, RunStatus } from "./ExecutionDetails";
 import "./studio.css";
+import ConnectionsPage from "../connections/Connections";
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Unable to load Bot Studio.";
 
-function Connections({ catalog, onClose }: { catalog: StudioCatalog; onClose: () => void }) {
+function ConnectionsDialog({
+  api,
+  catalog,
+  onClose,
+}: {
+  api: ApiClient;
+  catalog: StudioCatalog;
+  onClose: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
@@ -32,48 +41,21 @@ function Connections({ catalog, onClose }: { catalog: StudioCatalog; onClose: ()
   return (
     <dialog
       ref={dialog}
-      className="studio-connections-dialog"
+      className="drive-connections-dialog"
       onCancel={onClose}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      aria-labelledby="studio-connections-title"
+      aria-label="Manage connections"
     >
-      <header>
-        <div>
-          <span className="studio-eyebrow">PERMITTED CONNECTIONS</span>
-          <h2 id="studio-connections-title">Tools & connections</h2>
-        </div>
-        <button className="icon-button" aria-label="Close connections" onClick={onClose}>
-          <X size={18} />
-        </button>
-      </header>
-      <p>{catalog.credentials}</p>
-      {catalog.tools.map((tool) => (
-        <section key={tool.id}>
-          <div>
-            <h3>{tool.name}</h3>
-            <span className={tool.configured ? "connection-ready" : "connection-missing"}>
-              {tool.configured ? "Connected" : "Setup required"}
-            </span>
-          </div>
-          <p>{tool.setup}</p>
-          {tool.id === "brave_search" && (
-            <a
-              href="https://api-dashboard.search.brave.com"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open Brave API dashboard
-              <ArrowUpRight size={13} />
-            </a>
-          )}
-        </section>
-      ))}
-      <footer>
-        Provider credentials must be configured on both the API and worker. Never paste keys into a
-        bot objective. AI cost estimates require server-configured model rates.
-      </footer>
+      <button
+        className="icon-button connections-dialog-close"
+        aria-label="Close connections"
+        onClick={onClose}
+      >
+        <X size={18} />
+      </button>
+      <ConnectionsPage api={api} catalog={catalog} />
     </dialog>
   );
 }
@@ -230,6 +212,7 @@ export default function Studio({
   const bot = bots.find((item) => item.id === botId);
   const isNew = path === "/bots/new",
     isHistory = path === "/history" || !!botMatch;
+  const isConnections = path === "/connections";
   const isLibrary = path === "/" || path === "";
   const loadLibrary = useCallback(async () => {
     const [profiles, metadata] = await Promise.allSettled([api.studioBots(), api.studioCatalog()]);
@@ -386,7 +369,7 @@ export default function Studio({
           </button>
         </div>
         <div className="studio-topbar-right">
-          <button className="studio-connections-button" onClick={() => setConnections(true)}>
+          <button className="studio-connections-button" onClick={() => onNavigate("/connections")}>
             <span
               className={missing.length ? "studio-connection-dot missing" : "studio-connection-dot"}
             />
@@ -410,6 +393,13 @@ export default function Studio({
         >
           <History size={15} />
           All executions
+        </button>
+        <button
+          className={isConnections ? "selected" : ""}
+          onClick={() => onNavigate("/connections")}
+        >
+          <Settings2 size={15} />
+          Connections
         </button>
         <button className="studio-return-link" onClick={onClose}>
           <ArrowLeft size={13} />
@@ -443,6 +433,7 @@ export default function Studio({
           </div>
         ) : (
           <>
+            {isConnections && <ConnectionsPage api={api} catalog={catalog} />}
             {isLibrary && (
               <>
                 <div className="studio-page-heading">
@@ -468,7 +459,7 @@ export default function Studio({
                       {missing.length > 1 ? "need" : "needs"} server configuration. You can create a
                       bot now.
                     </span>
-                    <button onClick={() => setConnections(true)}>
+                    <button onClick={() => onNavigate("/connections")}>
                       View setup
                       <ArrowUpRight size={14} />
                     </button>
@@ -594,15 +585,17 @@ export default function Studio({
                       prepare outreach for your review.
                     </p>
                     <div className="studio-template-sequence">
-                      {catalog.skills.map((skill) => {
-                        const Icon = SKILL_ICONS[skill.id];
-                        return (
-                          <span key={skill.id}>
-                            <Icon size={14} />
-                            {skill.name}
-                          </span>
-                        );
-                      })}
+                      {catalog.skills
+                        .filter((skill) => skill.id !== "drive_context")
+                        .map((skill) => {
+                          const Icon = SKILL_ICONS[skill.id];
+                          return (
+                            <span key={skill.id}>
+                              <Icon size={14} />
+                              {skill.name}
+                            </span>
+                          );
+                        })}
                     </div>
                     <button className="button primary" onClick={() => onNavigate("/bots/new")}>
                       Create Lead Research Bot
@@ -614,7 +607,7 @@ export default function Studio({
                 <div className="studio-library-footer">
                   <FilePenLine size={16} />
                   <p>One supported template. Four reusable skills. Your tools, your permissions.</p>
-                  <button onClick={() => setConnections(true)}>
+                  <button onClick={() => onNavigate("/connections")}>
                     Manage connections
                     <ArrowUpRight size={13} />
                   </button>
@@ -624,6 +617,7 @@ export default function Studio({
             {(isNew || editMatch) &&
               (isNew || bot ? (
                 <StudioForm
+                  api={api}
                   key={bot?.id ?? "new"}
                   bot={bot}
                   catalog={catalog}
@@ -691,7 +685,11 @@ export default function Studio({
                       <span>Skills</span>
                       <strong>
                         {bot.configuration.skills
-                          .map((skill) => skill[0].toUpperCase() + skill.slice(1))
+                          .map((skill) =>
+                            skill === "drive_context"
+                              ? "Drive context"
+                              : skill[0].toUpperCase() + skill.slice(1),
+                          )
                           .join(" → ")}
                       </strong>
                       <small>Fixed, registered sequence</small>
@@ -766,7 +764,7 @@ export default function Studio({
         )}
       </div>
       {catalog && connections && (
-        <Connections catalog={catalog} onClose={() => setConnections(false)} />
+        <ConnectionsDialog api={api} catalog={catalog} onClose={() => setConnections(false)} />
       )}{" "}
       {deleting && (
         <DeleteBot

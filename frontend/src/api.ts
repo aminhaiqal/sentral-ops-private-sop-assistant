@@ -17,6 +17,8 @@ import type {
   StudioRunSummary,
 } from "./studio/types";
 
+import type { Connection, ConnectionsCatalog, DriveFile, DriveDocument } from "./connections/types";
+
 const API_URL = import.meta.env?.VITE_API_URL ?? "";
 
 export function createApiClient(getToken: () => Promise<string | null>, baseUrl = API_URL) {
@@ -56,6 +58,23 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
     return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
   }
   return {
+    connections: (): Promise<ConnectionsCatalog> => request("/api/connections"),
+    connectGoogleDrive: (): Promise<{ url: string; expires_in: number }> =>
+      request("/api/connections/google-drive/connect", { method: "POST" }),
+    refreshConnections: (): Promise<Connection[]> =>
+      request("/api/connections/google-drive/sync", { method: "POST" }),
+    reconnectConnection: (id: string): Promise<{ message: string }> =>
+      request(`/api/connections/${encodeURIComponent(id)}/reconnect`, { method: "POST" }),
+    disconnectConnection: (
+      id: string,
+    ): Promise<{ disconnected: boolean; provider_removed: boolean; message: string }> =>
+      request(`/api/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    driveFiles: (id: string, query = ""): Promise<DriveFile[]> =>
+      request(
+        `/api/connections/${encodeURIComponent(id)}/files?query=${encodeURIComponent(query)}`,
+      ),
+    driveDocument: (id: string, fileId: string): Promise<DriveDocument> =>
+      request(`/api/connections/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`),
     studioCatalog: (): Promise<StudioCatalog> => request("/api/studio/catalog"),
     studioBots: (): Promise<StudioBot[]> => request("/api/studio/bots"),
     studioBot: (id: string): Promise<StudioBot> =>

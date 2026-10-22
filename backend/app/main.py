@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth import require_user
 from app.config import get_settings
+from app.connections.api import router as connections_router
 from app.demo_questions import DEMO_QUESTIONS
 from app.harness.api import bots_router, routines_router
 from app.harness.api import router as task_router
@@ -75,11 +76,12 @@ app.include_router(task_router)
 app.include_router(bots_router)
 app.include_router(routines_router)
 app.include_router(studio_router)
+app.include_router(connections_router)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
-    if not request.url.path.startswith("/api/studio/"):
+    if not request.url.path.startswith(("/api/studio/", "/api/connections")):
         return await request_validation_exception_handler(request, exc)
     from fastapi.responses import JSONResponse
 

@@ -305,7 +305,7 @@ def test_redaction_does_not_expose_credentials():
 
 
 def test_registry_metadata_contains_typed_contracts_and_no_external_write_tools():
-    assert list(REGISTRY) == ["research", "analyze", "save", "draft"]
+    assert list(REGISTRY) == ["drive_context", "research", "analyze", "save", "draft"]
     for skill in REGISTRY.values():
         metadata = skill.metadata()
         assert metadata["input_schema"]["type"] == metadata["output_schema"]["type"] == "object"

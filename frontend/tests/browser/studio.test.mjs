@@ -117,6 +117,7 @@ test(
         await page.screenshot({
           path: join(process.env.STUDIO_SCREENSHOT_DIR, `${name}.png`),
           fullPage: false,
+          animations: "disabled",
         });
       }
     }
@@ -211,6 +212,102 @@ test(
     await page.getByRole("heading", { name: "Your first lead researcher" }).waitFor();
     await page.goto(resultUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Acme Engineering", exact: true }).waitFor();
+    // Google Drive uses the same authenticated API and persistent database.
+    await context.route("https://pipedream.com/**", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<h1>Test consent completed</h1>" }),
+    );
+    await page.goto(`${origin}/#/studio/connections`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Google Drive", exact: true }).waitFor();
+    const popupPromise = page.waitForEvent("popup");
+    await page.getByRole("button", { name: "Connect Google Drive", exact: true }).click();
+    const consent = await popupPromise;
+    await consent.getByRole("heading", { name: "Test consent completed" }).waitFor();
+    await consent.close();
+    await page.getByRole("button", { name: "Refresh accounts", exact: true }).click();
+    await page.getByText("owner@example.com", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Browse files", exact: true }).click();
+    await page.getByText("Company profile", { exact: true }).waitFor();
+    await page.getByLabel("Search Drive files", { exact: true }).fill("Company");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("region", { name: "Drive document preview" }).waitFor();
+    assert.ok(
+      (await page.locator(".drive-preview pre").innerText()).includes(
+        "We provide operations software",
+      ),
+    );
+    await screenshot(page, "drive-connections-desktop");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByText("owner@example.com", { exact: true }).waitFor();
+    const driveStranger = await pageFor(strangerToken);
+    await driveStranger.page.goto(`${origin}/#/studio/connections`, {
+      waitUntil: "domcontentloaded",
+    });
+    await driveStranger.page
+      .getByText("No Google Drive accounts connected yet.", { exact: true })
+      .waitFor();
+    await driveStranger.context.close();
+    await page
+      .getByRole("navigation", { name: "Studio navigation" })
+      .getByRole("button", { name: "Bot library", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Create bot", exact: true }).click();
+    await page.getByLabel("Bot name", { exact: true }).fill("Drive Context Research");
+    await page
+      .getByLabel("Objective", { exact: true })
+      .fill("Find automation companies using our selected company profile.");
+    await page.getByLabel("Target industry", { exact: true }).fill("Industrial automation");
+    await page.getByLabel("Location", { exact: true }).fill("Kuala Lumpur");
+    await page
+      .getByLabel("Qualification criteria", { exact: true })
+      .fill("Offers industrial automation services.");
+    await page
+      .getByLabel("Your offering", { exact: true })
+      .fill("Operations software for service companies.");
+    await page
+      .getByLabel("Google Drive account", { exact: true })
+      .selectOption({ label: "owner@example.com" });
+    await page.getByRole("checkbox", { name: "Use Company profile", exact: true }).check();
+    await page.getByRole("button", { name: "Connection setup", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Manage connections", exact: true })
+      .getByRole("heading", { name: "Google Drive", exact: true })
+      .waitFor();
+    await screenshot(page, "drive-connections-dialog");
+    await page.getByRole("button", { name: "Close connections", exact: true }).click();
+    assert.equal(
+      await page.getByRole("checkbox", { name: "Use Company profile", exact: true }).isChecked(),
+      true,
+    );
+    await screenshot(page, "drive-bot-selection");
+    await page.getByRole("button", { name: "Create bot", exact: true }).click();
+    await page.getByRole("button", { name: "Run bot", exact: true }).click();
+    await page.getByRole("heading", { name: "Research results", exact: true }).waitFor();
+    assert.equal(await page.locator(".studio-step").count(), 5);
+    await page.locator(".drive-run-context summary").click();
+    await page.getByText(/We provide operations software/, { exact: false }).waitFor();
+    const driveResultUrl = page.url();
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator(".drive-run-context summary").waitFor();
+    const driveMobile = await pageFor(token, { width: 375, height: 812 });
+    await driveMobile.page.goto(`${origin}/#/studio/connections`, {
+      waitUntil: "domcontentloaded",
+    });
+    await driveMobile.page.getByRole("button", { name: "Browse files", exact: true }).click();
+    await driveMobile.page.getByRole("button", { name: "Preview", exact: true }).click();
+    await driveMobile.page.getByRole("region", { name: "Drive document preview" }).waitFor();
+    assert.equal(
+      await driveMobile.page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+      false,
+    );
+    await screenshot(driveMobile.page, "drive-connections-mobile");
+    await driveMobile.context.close();
+    await page.goto(`${origin}/#/studio/connections`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.getByRole("button", { name: "Confirm disconnect", exact: true }).click();
+    await page.getByText("Disconnected", { exact: true }).waitFor();
+    await page.goto(driveResultUrl, { waitUntil: "domcontentloaded" });
+    await page.locator(".drive-run-context summary").waitFor();
     await writeFile(join(state, "disable-search"), "test-only provider configuration toggle");
     await delay(250);
     await page.goto(`${origin}/#/studio`, { waitUntil: "domcontentloaded" });

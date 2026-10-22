@@ -36,12 +36,29 @@ def main():
         clerk_authorized_parties=args.frontend_origin,
         openai_api_key="browser-test-configured",
         brave_search_api_key="browser-test-configured",
+        pipedream_client_id="browser-test-configured",
+        pipedream_client_secret="browser-test-configured",
+        pipedream_project_id="proj_BrowserTest",
         auto_ingest_on_startup=False,
         studio_input_usd_per_million=1,
         studio_output_usd_per_million=2,
     )
     configuration.get_settings = lambda: settings
+    from test_connections import FakeDriveProvider
     from test_studio import FakeProviders
+
+    from app.connections.provider import PipedreamProvider
+
+    # Replace only the external provider boundary, for all API/worker instances.
+    drive = FakeDriveProvider()
+    PipedreamProvider.connect_link = lambda self, *args, **kwargs: drive.connect_link(
+        *args, **kwargs
+    )
+    PipedreamProvider.accounts = lambda self, *args, **kwargs: drive.accounts(*args, **kwargs)
+    PipedreamProvider.delete_account = lambda self, *args, **kwargs: drive.delete_account(
+        *args, **kwargs
+    )
+    PipedreamProvider.tools = lambda self, *args, **kwargs: drive.tools(*args, **kwargs)
 
     from app.harness.store import TaskStore
     from app.harness.worker import worker_lock

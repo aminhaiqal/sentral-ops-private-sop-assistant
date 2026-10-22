@@ -5,6 +5,10 @@ Open **Bot Studio** from the Axelyn sidebar, or visit `/#/studio` while signed i
 The existing document workspace and its routines remain available separately.
 Studio V1 supports manual execution only.
 
+Optional [Google Drive connections](google-drive-connections.md) let users select
+up to two background documents. Their registered Drive context skill runs before
+the existing sequence; bots without Drive selections keep the original behavior.
+
 Signed-out Studio links hand the URL hash to Clerk before mounting sign-in. Only a
 validated same-origin Studio return path is retained in session storage, scoped to
 the Clerk application; it is cleared when the session becomes active. No session
@@ -17,7 +21,9 @@ tokens or credentials are stored by this handoff.
    qualification criteria, and a truthful description of your offering.
 3. Review the four skills (Draft is selected by default and optional) and grant **Brave Search**, **AI provider**, and
    **Axelyn database**. Connections are managed by the server administrator; users
-   grant each bot permission to use them. No credentials belong in objectives.
+   grant each bot permission to use them. Optional Drive accounts are connected by
+   each user through Connections and limited to explicitly selected files.
+   No credentials belong in objectives.
 4. Set the desired output, minimum fit score, maximum prospects (1–8), and minimum
    qualified count. Save the bot, then choose **Run bot**.
 5. Open the run to inspect each skill, its redacted inputs and outputs, logs,
@@ -82,8 +88,9 @@ timed-out or interrupted requests retain the reservation and are marked unreport
 
 ## Architecture
 
-No new service, ORM, graph engine, queue, or runtime dependency is introduced.
-`httpx`, already installed with the AI SDK, is now declared as a production dependency.
+No new service, ORM, graph engine or queue is introduced. `httpx`, already installed
+with the AI SDK, is declared as a production dependency. Optional Drive connections
+add the official `mcp` client, its `httpx2` transport and `jsonschema` validation.
 Playwright is a development-only dependency for repeatable browser verification.
 
 - React uses the existing authenticated API client and Clerk session boundary.
@@ -92,7 +99,8 @@ Playwright is a development-only dependency for repeatable browser verification.
 - The existing worker alternates between Studio jobs and document tasks, under the
   same process lock. Restart recovery preserves completed steps and usage reservations.
 - Code-defined templates specify approved registered sequences; Lead Research permits
-  Research → Analyze → Save, optionally followed by Draft. Users cannot submit
+  Research → Analyze → Save, optionally followed by Draft. Selected Drive sources
+  prepend the registered Drive context skill. Users cannot submit
   executable code, custom tool endpoints, arbitrary skill identifiers or workflows.
 
 The default Lead Research sequence is:
@@ -113,7 +121,7 @@ Every skill has an identifier, description, typed input/output schemas, permitte
 tools, effect classification and handler in `registry.py`. Per-skill data is
 validated before and after execution. The shared contracts do not depend on a
 specific bot ID, so additional code-reviewed templates can reuse these skills.
-Configuration currently belongs to the typed bot target and expected-results schemas;
+Configuration belongs to the typed bot target, expected-results and optional Drive source schemas;
 no free-form skill program or arbitrary configuration dictionary is accepted.
 
 Data records:

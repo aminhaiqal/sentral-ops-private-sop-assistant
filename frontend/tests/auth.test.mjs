@@ -161,3 +161,16 @@ test("Studio sign-in handoff works when browser storage is unavailable", async (
     "/",
   );
 });
+
+test("Connections deep links return to the same approved Studio page after sign-in", async () => {
+  const { prepareAuthRoute } = await import("../src/authReturn.ts");
+  assert.equal(
+    prepareAuthRoute(
+      { hash: "#/studio/connections", pathname: "/", search: "" },
+      { replaceState: () => {} },
+      null,
+      "app",
+    ),
+    "/#/studio/connections",
+  );
+});

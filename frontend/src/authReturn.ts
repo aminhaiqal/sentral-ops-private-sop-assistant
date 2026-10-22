@@ -1,6 +1,6 @@
 type RouteStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const VALID_STUDIO_PATH =
-  /^\/#\/studio(?:\/(?:history|bots\/(?:new|[a-f0-9]{32}(?:\/edit)?)|runs\/[a-f0-9]{32}))?\/?$/;
+  /^\/#\/studio(?:\/(?:connections|history|bots\/(?:new|[a-f0-9]{32}(?:\/edit)?)|runs\/[a-f0-9]{32}))?\/?$/;
 
 export function prepareAuthRoute(
   location: Pick<Location, "hash" | "pathname" | "search">,

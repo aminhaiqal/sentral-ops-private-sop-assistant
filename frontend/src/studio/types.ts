@@ -1,5 +1,6 @@
-export type SkillId = "research" | "analyze" | "save" | "draft";
-export type ToolId = "brave_search" | "llm" | "database";
+import type { DriveSource } from "../connections/types";
+export type SkillId = "drive_context" | "research" | "analyze" | "save" | "draft";
+export type ToolId = "brave_search" | "llm" | "database" | "google_drive";
 export type StudioConfig = {
   template_id: "lead_research_v1";
   name: string;
@@ -8,6 +9,7 @@ export type StudioConfig = {
   tools: ToolId[];
   trigger: "manual";
   enabled: boolean;
+  drive_source?: DriveSource | null;
   target: {
     industry: string;
     location: string;

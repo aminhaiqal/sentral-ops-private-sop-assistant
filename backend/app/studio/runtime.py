@@ -1,5 +1,6 @@
 """Approved skill sequences; no model-driven workflow routing or arbitrary execution."""
 
+import asyncio
 import json
 import logging
 import time
@@ -9,6 +10,9 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.connections.drive import DriveService
+from app.connections.provider import SETUP
+from app.connections.store import ConnectionStore
 from app.harness.store import now
 from app.studio.models import BotConfig, RunResult
 from app.studio.providers import Providers
@@ -41,6 +45,22 @@ class Context:
         if not set(tools).issubset(allowed):
             raise StudioError(
                 "permission_denied", "This tool was not granted when the run was submitted."
+            )
+        source = self.state["configuration"].get("drive_source")
+        if source:
+            if not self.settings.connections_configured:
+                raise StudioError("configuration_error", SETUP, retryable=True)
+            if (
+                not current.drive_source
+                or current.drive_source.connection_id != source["connection_id"]
+                or not set(source["file_ids"]).issubset(current.drive_source.file_ids)
+            ):
+                raise StudioError(
+                    "permission_denied",
+                    "This bot's selected Drive account or files were revoked. Start a new run after reviewing permissions.",
+                )
+            ConnectionStore(self.store.tasks, self.settings).owned(
+                self.workspace, source["connection_id"]
             )
         remaining = (
             datetime.fromisoformat(self.state["deadline_at"]) - datetime.now(UTC)
@@ -91,6 +111,25 @@ class Context:
             )
         self.reserve()
         return self.providers.search(query, limit, timeout)
+
+    def drive_documents(self, source):
+        timeout = self.check({"google_drive"})
+        connections = ConnectionStore(self.store.tasks, self.settings)
+        service = DriveService(connections, self.settings)
+        connections.begin_operation(self.workspace, source.connection_id, "bot_read_files")
+
+        def before_call():
+            self.check({"google_drive"})
+            self.reserve()
+
+        try:
+            documents = asyncio.run(service.context(self.workspace, source, before_call, timeout))
+            self.check({"google_drive"})
+            connections.record(self.workspace, source.connection_id, "bot_read_files", "completed")
+            return documents
+        except StudioError as exc:
+            connections.record(self.workspace, source.connection_id, "bot_read_files", exc.code)
+            raise
 
     def generate(self, schema, instructions, data):
         timeout = self.check({"llm"})
@@ -155,6 +194,8 @@ class Context:
 
 def step_input(skill_id, config, outputs):
     target = config.target
+    if skill_id == "drive_context":
+        return {"source": config.drive_source.model_dump()}
     if skill_id == "research":
         return {
             "industry": target.industry,
@@ -168,6 +209,7 @@ def step_input(skill_id, config, outputs):
             "candidates": outputs["research"]["candidates"],
             "minimum_score": target.minimum_score,
             "limit": target.max_prospects,
+            "drive_context": outputs.get("drive_context", {}).get("documents", []),
         }
     if skill_id == "save":
         return {"prospects": outputs["analyze"]["qualified"]}
@@ -177,6 +219,7 @@ def step_input(skill_id, config, outputs):
             "offering": target.offering,
             "instructions": config.expected_results.description,
             "prospects": outputs["save"]["prospects"],
+            "drive_context": outputs.get("drive_context", {}).get("documents", []),
         }
     raise StudioError("unsupported_skill", "The template references an unregistered skill.")
 

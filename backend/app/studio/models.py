@@ -2,13 +2,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.connections.models import DriveDocument, DriveSource
+
 
 class Schema(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-SkillId = Literal["research", "analyze", "save", "draft"]
-ToolId = Literal["brave_search", "llm", "database"]
+SkillId = Literal["drive_context", "research", "analyze", "save", "draft"]
+ToolId = Literal["brave_search", "llm", "database", "google_drive"]
 SEQUENCE: tuple[SkillId, ...] = ("research", "analyze", "save", "draft")
 
 
@@ -30,20 +32,26 @@ class BotConfig(Schema):
     template_id: Literal["lead_research_v1"] = "lead_research_v1"
     name: str = Field(min_length=1, max_length=80)
     objective: str = Field(min_length=10, max_length=2000)
-    skills: list[SkillId] = Field(default_factory=lambda: list(SEQUENCE), max_length=4)
+    skills: list[SkillId] = Field(default_factory=lambda: list(SEQUENCE), max_length=5)
     tools: list[ToolId] = Field(
-        default_factory=lambda: ["brave_search", "llm", "database"], max_length=3
+        default_factory=lambda: ["brave_search", "llm", "database"], max_length=4
     )
     trigger: Literal["manual"] = "manual"
     target: LeadTarget
     expected_results: ExpectedResults
     enabled: bool = True
+    drive_source: DriveSource | None = None
 
     @model_validator(mode="after")
     def supported_template(self):
-        if self.skills not in [list(SEQUENCE), list(SEQUENCE[:-1])]:
+        prefix = ["drive_context"] if self.drive_source else []
+        if self.skills not in [prefix + list(SEQUENCE), prefix + list(SEQUENCE[:-1])]:
             raise ValueError(
                 "Lead Research requires Research, Analyze and Save, followed by optional Draft. Other sequences are not supported."
+            )
+        if bool(self.drive_source) != ("google_drive" in self.tools):
+            raise ValueError(
+                "Google Drive requires a connected account and selected files. Remove the tool grant to stop using Drive."
             )
         if len(set(self.tools)) != len(self.tools):
             raise ValueError("Select each tool only once.")
@@ -80,6 +88,7 @@ class AnalyzeInput(Schema):
     candidates: list[Candidate] = Field(max_length=16)
     minimum_score: int
     limit: int
+    drive_context: list[DriveDocument] = Field(default_factory=list, max_length=2)
 
 
 class Assessment(Schema):
@@ -135,6 +144,7 @@ class DraftInput(Schema):
     offering: str
     instructions: str
     prospects: list[SavedProspect] = Field(max_length=8)
+    drive_context: list[DriveDocument] = Field(default_factory=list, max_length=2)
 
 
 class OutreachDraft(Schema):

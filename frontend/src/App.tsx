@@ -9,6 +9,7 @@ import {
   Layers3,
   Loader2,
   Plus,
+  Plug,
   Search,
   X,
 } from "lucide-react";
@@ -485,6 +486,15 @@ function DocumentWorkspace({
           >
             <Layers3 size={17} />
             Bot Studio<span>New</span>
+          </button>
+          <button
+            className="sidebar-link"
+            onClick={() => {
+              window.location.hash = "/studio/connections";
+            }}
+          >
+            <Plug size={17} />
+            Connections
           </button>
           <button className="sidebar-link" onClick={() => setDocumentsOpen(true)}>
             <BookOpen size={17} />

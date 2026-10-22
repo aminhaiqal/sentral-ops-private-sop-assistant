@@ -17,6 +17,10 @@ import {
 import type { OutreachDraft, Prospect, StudioRun } from "./types";
 import { saveBlob } from "../workspace";
 import { SKILL_ICONS } from "./StudioForm";
+import type { DriveDocument } from "../connections/types";
+
+const skillName = (id: string) =>
+  id === "drive_context" ? "Drive context" : id[0].toUpperCase() + id.slice(1);
 
 export const RUN_LABELS = {
   queued: "Queued",
@@ -85,6 +89,9 @@ export default function ExecutionDetails({
       OutreachDraft[] | undefined) ??
     [];
   const step = run.steps.find((item) => item.skill_id === stepId);
+  const driveDocuments = (run.steps.find(
+    (item) => item.skill_id === "drive_context" && item.status === "completed",
+  )?.output?.documents ?? []) as DriveDocument[];
   const totals = run.usage;
   const duration =
     run.started_at && run.completed_at
@@ -216,7 +223,7 @@ export default function ExecutionDetails({
               >
                 <Icon size={18} />
                 <span>
-                  <strong>{item.skill_id[0].toUpperCase() + item.skill_id.slice(1)}</strong>
+                  <strong>{skillName(item.skill_id)}</strong>
                   <small>
                     {item.status === "pending" ? (active ? "Waiting" : "Not run") : item.status}
                     {item.attempts
@@ -273,6 +280,26 @@ export default function ExecutionDetails({
           </div>
           {tab === "results" && (
             <>
+              {driveDocuments.length > 0 && (
+                <details className="drive-run-context">
+                  <summary>
+                    Background from {driveDocuments.length} selected Drive{" "}
+                    {driveDocuments.length === 1 ? "document" : "documents"}
+                  </summary>
+                  {driveDocuments.map((doc) => (
+                    <section key={doc.file.id}>
+                      <a href={doc.file.url} target="_blank" rel="noopener noreferrer">
+                        {doc.file.name}
+                        <ExternalLink size={12} />
+                      </a>
+                      <p>{doc.text}</p>
+                      {doc.truncated && (
+                        <small>Context limited to the first 2,000 characters.</small>
+                      )}
+                    </section>
+                  ))}
+                </details>
+              )}
               <div className="studio-result-intro">
                 <h2>
                   {run.result
@@ -383,7 +410,7 @@ export default function ExecutionDetails({
               {step && (
                 <div className="studio-step-details">
                   <div>
-                    <h2>{step.skill_id[0].toUpperCase() + step.skill_id.slice(1)} step</h2>
+                    <h2>{skillName(step.skill_id)} step</h2>
                     <span>{step.status}</span>
                   </div>
                   <p>

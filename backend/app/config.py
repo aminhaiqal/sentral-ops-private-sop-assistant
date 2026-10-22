@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     harness_max_runtime_seconds: int = Field(default=600, ge=10, le=3600)
     harness_request_timeout_seconds: int = Field(default=60, ge=1, le=120)
     brave_search_api_key: str | None = Field(default=None, repr=False)
+    pipedream_client_id: str | None = Field(default=None, repr=False)
+    pipedream_client_secret: str | None = Field(default=None, repr=False)
+    pipedream_project_id: str | None = Field(default=None, pattern=r"^proj_[a-zA-Z0-9]+$")
+    pipedream_environment: Literal["development", "production"] = "development"
+    pipedream_drive_oauth_app_id: str | None = Field(default=None, pattern=r"^oa_[a-zA-Z0-9]+$")
     studio_max_tokens: int = Field(default=40000, ge=4000, le=200000)
     studio_max_api_calls: int = Field(default=8, ge=2, le=20)
     studio_max_llm_calls: int = Field(default=4, ge=2, le=8)
@@ -92,6 +97,12 @@ class Settings(BaseSettings):
     def storage_configured(self) -> bool:
         return all(
             (self.r2_endpoint, self.r2_bucket, self.r2_access_key_id, self.r2_secret_access_key)
+        )
+
+    @property
+    def connections_configured(self) -> bool:
+        return all(
+            (self.pipedream_client_id, self.pipedream_client_secret, self.pipedream_project_id)
         )
 
 

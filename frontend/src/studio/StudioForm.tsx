@@ -8,10 +8,16 @@ import {
   Sparkles,
   Database,
   FilePenLine,
+  HardDrive,
 } from "lucide-react";
 import type { StudioBot, StudioCatalog, StudioConfig, ToolId } from "./types";
 
+import type { ApiClient } from "../api";
+import DriveSourcePicker from "../connections/DriveSourcePicker";
+import type { DriveSource } from "../connections/types";
+
 export const SKILL_ICONS = {
+  drive_context: HardDrive,
   research: Search,
   analyze: Sparkles,
   save: Database,
@@ -42,12 +48,14 @@ const INITIAL: StudioConfig = {
 };
 
 export default function StudioForm({
+  api,
   bot,
   catalog,
   onSave,
   onBack,
   onConnections,
 }: {
+  api: ApiClient;
   bot?: StudioBot;
   catalog: StudioCatalog;
   onSave: (data: StudioConfig) => Promise<void>;
@@ -76,9 +84,27 @@ export default function StudioForm({
         : [...config.tools, id],
     );
   }
+  function driveSource(source: DriveSource | null) {
+    setConfig((current) => ({
+      ...current,
+      drive_source: source,
+      tools: [
+        ...current.tools.filter((id) => id !== "google_drive"),
+        ...(source ? ["google_drive" as const] : []),
+      ],
+      skills: [
+        ...(source ? ["drive_context" as const] : []),
+        ...current.skills.filter((id) => id !== "drive_context"),
+      ],
+    }));
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (busy) return;
+    if (config.drive_source && !config.drive_source.file_ids.length) {
+      setError("Choose at least one Drive document or remove Drive access.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -186,6 +212,12 @@ export default function StudioForm({
               />
             </label>
           </section>
+          <DriveSourcePicker
+            api={api}
+            source={config.drive_source ?? null}
+            onChange={driveSource}
+            onConnections={onConnections}
+          />
           <section className="studio-form-section">
             <div className="studio-section-title">
               <span>5</span>
@@ -263,39 +295,41 @@ export default function StudioForm({
               <span>2</span>
               <div>
                 <h2>Skills</h2>
-                <p>This template uses four reusable skills.</p>
+                <p>Required skills run in order; Drive context and Draft are optional.</p>
               </div>
             </div>
             <div className="studio-selected-skills">
-              {catalog.skills.map((skill) => {
-                const Icon = SKILL_ICONS[skill.id];
-                return (
-                  <label key={skill.id} className="studio-skill-choice">
-                    <input
-                      type="checkbox"
-                      checked={config.skills.includes(skill.id)}
-                      disabled={skill.id !== "draft"}
-                      aria-label={`${skill.name} ${skill.id === "draft" ? "optional" : "required"} skill`}
-                      onChange={() =>
-                        change(
-                          "skills",
-                          config.skills.includes("draft")
-                            ? ["research", "analyze", "save"]
-                            : ["research", "analyze", "save", "draft"],
-                        )
-                      }
-                    />
-                    <Icon size={17} />
-                    <span>
-                      <strong>
-                        {skill.name}
-                        {skill.id === "draft" ? " · optional" : ""}
-                      </strong>
-                      <small>{skill.description}</small>
-                    </span>
-                  </label>
-                );
-              })}
+              {catalog.skills
+                .filter((skill) => skill.id !== "drive_context" || !!config.drive_source)
+                .map((skill) => {
+                  const Icon = SKILL_ICONS[skill.id];
+                  return (
+                    <label key={skill.id} className="studio-skill-choice">
+                      <input
+                        type="checkbox"
+                        checked={config.skills.includes(skill.id)}
+                        disabled={skill.id !== "draft"}
+                        aria-label={`${skill.name} ${skill.id === "draft" || skill.id === "drive_context" ? "optional" : "required"} skill`}
+                        onChange={() =>
+                          change(
+                            "skills",
+                            config.skills.includes("draft")
+                              ? config.skills.filter((id) => id !== "draft")
+                              : [...config.skills, "draft"],
+                          )
+                        }
+                      />
+                      <Icon size={17} />
+                      <span>
+                        <strong>
+                          {skill.name}
+                          {skill.id === "draft" ? " · optional" : ""}
+                        </strong>
+                        <small>{skill.description}</small>
+                      </span>
+                    </label>
+                  );
+                })}
             </div>
             <p className="studio-field-help">
               Research, Analyze and Save are required. Select Draft to add outreach messages for
@@ -329,7 +363,8 @@ export default function StudioForm({
               Connection setup
             </button>
             <p className="studio-field-help">
-              The template requires all three tools to execute. API keys stay on the server.
+              Research requires these three tools. Drive access is added when you select background
+              documents. API keys stay on the server.
             </p>
           </section>
           <section className="studio-form-section">
