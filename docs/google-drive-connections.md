@@ -87,7 +87,8 @@ AI providers to discover and evaluate public prospects. The app never sends outr
   for the same Google client and account. Existing execution records remain saved.
 - OAuth callback query strings are excluded from API and Nginx access logs. Any
   additional edge proxy must also avoid logging callback query parameters. Callback
-  pages have no external resources and use no-store and no-referrer headers.
+  pages have no external resources and use no-store and no-referrer headers, plus
+  a page-level no-referrer policy for proxies that override response headers.
 
 ## MCP and runtime limits
 

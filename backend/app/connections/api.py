@@ -87,7 +87,7 @@ async def connect(
 def callback_page(message, success=False, cookie=None):
     nonce = secrets.token_urlsafe(24)
     title = "Google Drive authorized" if success else "Google Drive connection not completed"
-    body = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{title}</title><style nonce="{nonce}">body{{font:16px/1.7 system-ui,sans-serif;max-width:480px;padding:48px 24px;margin:auto;color:#51465c}}h1{{font-size:24px}}</style></head><body><h1>{title}</h1><p>{html.escape(message)}</p><p>You can close this tab and return to Axelyn.</p>'
+    body = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="referrer" content="no-referrer"><title>{title}</title><style nonce="{nonce}">body{{font:16px/1.7 system-ui,sans-serif;max-width:480px;padding:48px 24px;margin:auto;color:#51465c}}h1{{font-size:24px}}</style></head><body><h1>{title}</h1><p>{html.escape(message)}</p><p>You can close this tab and return to Axelyn.</p>'
     if success:
         body += f'<script nonce="{nonce}">window.close();</script>'
     body += "</body></html>"

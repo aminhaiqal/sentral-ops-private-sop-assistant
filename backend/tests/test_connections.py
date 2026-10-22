@@ -590,6 +590,7 @@ def test_callback_requires_matching_cookie_and_replay_does_not_cancel_ready_flow
     )
     assert "approved" not in good.text or "Google approved access" in good.text
     assert "test-refresh-value" not in good.text and state not in good.text
+    assert '<meta name="referrer" content="no-referrer">' in good.text
     assert (
         good.headers["referrer-policy"] == "no-referrer"
         and "frame-ancestors 'none'" in good.headers["content-security-policy"]
