@@ -36,9 +36,9 @@ def main():
         clerk_authorized_parties=args.frontend_origin,
         openai_api_key="browser-test-configured",
         brave_search_api_key="browser-test-configured",
-        pipedream_client_id="browser-test-configured",
-        pipedream_client_secret="browser-test-configured",
-        pipedream_project_id="proj_BrowserTest",
+        google_drive_client_id="browser-test.apps.googleusercontent.com",
+        google_drive_client_secret="browser-test-configured",
+        google_drive_redirect_uri=f"http://127.0.0.1:{args.port}/api/connections/google-drive/callback",
         auto_ingest_on_startup=False,
         studio_input_usd_per_million=1,
         studio_output_usd_per_million=2,
@@ -47,18 +47,19 @@ def main():
     from test_connections import FakeDriveProvider
     from test_studio import FakeProviders
 
-    from app.connections.provider import PipedreamProvider
+    from app.connections.provider import GoogleDriveProvider
+    from app.connections.store import ConnectionStore
+    from app.harness.store import TaskStore
 
-    # Replace only the external provider boundary, for all API/worker instances.
-    drive = FakeDriveProvider()
-    PipedreamProvider.connect_link = lambda self, *args, **kwargs: drive.connect_link(
-        *args, **kwargs
+    # Only the Google HTTP boundary is replaced. OAuth state/cookies, encrypted
+    # credentials, callback finalization and MCP execution use production code.
+    drive = FakeDriveProvider(
+        settings, ConnectionStore(TaskStore(settings.harness_db_path), settings)
     )
-    PipedreamProvider.accounts = lambda self, *args, **kwargs: drive.accounts(*args, **kwargs)
-    PipedreamProvider.delete_account = lambda self, *args, **kwargs: drive.delete_account(
-        *args, **kwargs
-    )
-    PipedreamProvider.tools = lambda self, *args, **kwargs: drive.tools(*args, **kwargs)
+    GoogleDriveProvider.exchange = lambda self, *args, **kwargs: drive.exchange(*args, **kwargs)
+    GoogleDriveProvider.account = lambda self, *args, **kwargs: drive.account(*args, **kwargs)
+    GoogleDriveProvider.request = lambda self, *args, **kwargs: drive.request(*args, **kwargs)
+    GoogleDriveProvider.revoke = lambda self, *args, **kwargs: drive.revoke(*args, **kwargs)
 
     from app.harness.store import TaskStore
     from app.harness.worker import worker_lock

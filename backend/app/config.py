@@ -43,11 +43,10 @@ class Settings(BaseSettings):
     harness_max_runtime_seconds: int = Field(default=600, ge=10, le=3600)
     harness_request_timeout_seconds: int = Field(default=60, ge=1, le=120)
     brave_search_api_key: str | None = Field(default=None, repr=False)
-    pipedream_client_id: str | None = Field(default=None, repr=False)
-    pipedream_client_secret: str | None = Field(default=None, repr=False)
-    pipedream_project_id: str | None = Field(default=None, pattern=r"^proj_[a-zA-Z0-9]+$")
-    pipedream_environment: Literal["development", "production"] = "development"
-    pipedream_drive_oauth_app_id: str | None = Field(default=None, pattern=r"^oa_[a-zA-Z0-9]+$")
+    google_drive_client_id: str | None = Field(default=None, repr=False)
+    google_drive_client_secret: str | None = Field(default=None, repr=False)
+    google_drive_redirect_uri: str | None = None
+    google_drive_token_encryption_key: str | None = Field(default=None, repr=False)
     studio_max_tokens: int = Field(default=40000, ge=4000, le=200000)
     studio_max_api_calls: int = Field(default=8, ge=2, le=20)
     studio_max_llm_calls: int = Field(default=4, ge=2, le=8)
@@ -102,8 +101,35 @@ class Settings(BaseSettings):
     @property
     def connections_configured(self) -> bool:
         return all(
-            (self.pipedream_client_id, self.pipedream_client_secret, self.pipedream_project_id)
+            (
+                self.google_drive_client_id,
+                self.google_drive_client_secret,
+                self.google_drive_redirect_uri,
+            )
         )
+
+    @field_validator("google_drive_redirect_uri")
+    @classmethod
+    def validate_drive_redirect(cls, value):
+        from urllib.parse import urlsplit
+
+        if not value:
+            return None
+        parsed = urlsplit(value)
+        local = parsed.hostname in {"localhost", "127.0.0.1"}
+        if (
+            (parsed.scheme != "https" and not (local and parsed.scheme == "http"))
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path != "/api/connections/google-drive/callback"
+        ):
+            raise ValueError(
+                "GOOGLE_DRIVE_REDIRECT_URI must be an HTTPS callback URL ending in /api/connections/google-drive/callback (HTTP is allowed only on localhost)."
+            )
+        return value
 
 
 @lru_cache

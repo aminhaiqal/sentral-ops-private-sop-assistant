@@ -79,6 +79,14 @@ app.include_router(studio_router)
 app.include_router(connections_router)
 
 
+@app.middleware("http")
+async def protect_google_callback_query(request, call_next):
+    if request.url.path == "/api/connections/google-drive/callback":
+        request.state.google_oauth_query = list(request.query_params.multi_items())
+        request.scope["query_string"] = b""
+    return await call_next(request)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
     if not request.url.path.startswith(("/api/studio/", "/api/connections")):

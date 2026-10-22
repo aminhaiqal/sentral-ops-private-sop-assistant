@@ -34,7 +34,7 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
       headers.set("Authorization", `Bearer ${token}`);
       const response = await fetch(`${baseUrl}${path}`, {
         ...options,
-        credentials: "omit",
+        credentials: options?.credentials ?? "omit",
         headers,
         signal: controller.signal,
       });
@@ -59,12 +59,18 @@ export function createApiClient(getToken: () => Promise<string | null>, baseUrl 
   }
   return {
     connections: (): Promise<ConnectionsCatalog> => request("/api/connections"),
-    connectGoogleDrive: (): Promise<{ url: string; expires_in: number }> =>
-      request("/api/connections/google-drive/connect", { method: "POST" }),
-    refreshConnections: (): Promise<Connection[]> =>
-      request("/api/connections/google-drive/sync", { method: "POST" }),
-    reconnectConnection: (id: string): Promise<{ message: string }> =>
-      request(`/api/connections/${encodeURIComponent(id)}/reconnect`, { method: "POST" }),
+    connectGoogleDrive: (): Promise<{ url: string; flow_id: string; expires_in: number }> =>
+      request("/api/connections/google-drive/connect", { method: "POST", credentials: "include" }),
+    googleDriveAuthStatus: (id: string): Promise<{ status: string; error: string | null }> =>
+      request(`/api/connections/google-drive/attempts/${encodeURIComponent(id)}`),
+    completeGoogleDriveAuth: (id: string): Promise<Connection> =>
+      request(`/api/connections/google-drive/attempts/${encodeURIComponent(id)}/complete`, {
+        method: "POST",
+      }),
+    cancelGoogleDriveAuth: (id: string): Promise<void> =>
+      request(`/api/connections/google-drive/attempts/${encodeURIComponent(id)}/cancel`, {
+        method: "POST",
+      }),
     disconnectConnection: (
       id: string,
     ): Promise<{ disconnected: boolean; provider_removed: boolean; message: string }> =>

@@ -7,9 +7,9 @@ export type Connection = {
   checked_at: string;
 };
 export type ConnectionsCatalog = {
-  provider: "pipedream";
+  provider: "google_drive";
+  account_scope: string;
   configured: boolean;
-  environment: "development" | "production";
   setup: string;
   connections: Connection[];
   capabilities: string[];

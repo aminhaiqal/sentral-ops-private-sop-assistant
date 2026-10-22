@@ -213,18 +213,27 @@ test(
     await page.goto(resultUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Acme Engineering", exact: true }).waitFor();
     // Google Drive uses the same authenticated API and persistent database.
-    await context.route("https://pipedream.com/**", (route) =>
-      route.fulfill({ contentType: "text/html", body: "<h1>Test consent completed</h1>" }),
-    );
+    await context.route("https://accounts.google.com/o/oauth2/v2/auth**", (route) => {
+      const state = new URL(route.request().url()).searchParams.get("state");
+      return route.fulfill({
+        status: 302,
+        headers: {
+          Location: `${apiUrl}/api/connections/google-drive/callback?code=approved&state=${encodeURIComponent(state)}`,
+        },
+      });
+    });
     await page.goto(`${origin}/#/studio/connections`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Google Drive", exact: true }).waitFor();
+    assert.equal(
+      await page.getByRole("button", { name: "Refresh accounts", exact: true }).count(),
+      0,
+    );
     const popupPromise = page.waitForEvent("popup");
     await page.getByRole("button", { name: "Connect Google Drive", exact: true }).click();
     const consent = await popupPromise;
-    await consent.getByRole("heading", { name: "Test consent completed" }).waitFor();
-    await consent.close();
-    await page.getByRole("button", { name: "Refresh accounts", exact: true }).click();
+    await page.getByText("Google Drive connected.", { exact: true }).waitFor();
     await page.getByText("owner@example.com", { exact: true }).waitFor();
+    assert.equal(consent.isClosed(), true);
     await page.getByRole("button", { name: "Browse files", exact: true }).click();
     await page.getByText("Company profile", { exact: true }).waitFor();
     await page.getByLabel("Search Drive files", { exact: true }).fill("Company");
@@ -243,9 +252,11 @@ test(
     await driveStranger.page.goto(`${origin}/#/studio/connections`, {
       waitUntil: "domcontentloaded",
     });
-    await driveStranger.page
-      .getByText("No Google Drive accounts connected yet.", { exact: true })
-      .waitFor();
+    await driveStranger.page.getByRole("heading", { name: "Google Drive", exact: true }).waitFor();
+    assert.equal(
+      await driveStranger.page.getByText("owner@example.com", { exact: true }).count(),
+      0,
+    );
     await driveStranger.context.close();
     await page
       .getByRole("navigation", { name: "Studio navigation" })

@@ -424,3 +424,37 @@
     animation: none;
   }
 }
+
+.connection-provider-heading > .button {
+  margin-left: auto;
+  min-width: 100px;
+  justify-content: center;
+}
+.connection-not-ready {
+  margin: 20px 0 0;
+  color: #74667f;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.connection-pending {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+  font-size: 13px;
+}
+.connections-activity > summary {
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+@media (max-width: 620px) {
+  .connection-provider-heading > .button {
+    width: 100%;
+    margin-top: 8px;
+  }
+  .connection-pending {
+    align-items: flex-start;
+  }
+}

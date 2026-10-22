@@ -1,86 +1,47 @@
-"""Fixed-host Pipedream control API and a narrowly permitted remote MCP client."""
+"""Direct Google OAuth and a small, read-only MCP adapter over the stable Drive API."""
 
 import asyncio
 import json
+import math
 import re
+import secrets
+import time
 from contextlib import asynccontextmanager
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
-import httpx
 import httpx2
+from authlib.integrations.base_client.errors import OAuthError
+from authlib.integrations.httpx_client import AsyncOAuth2Client
+from authlib.oauth2.rfc6749.errors import OAuth2Error
 from jsonschema import Draft202012Validator, SchemaError, ValidationError
-from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+from mcp import Client
+from mcp.server import MCPServer
 
 from app.studio.safety import StudioError
 
-API = "https://api.pipedream.com/v1"
-MCP_URL = "https://remote.mcp.pipedream.net/v3"
-APP = "google_drive"
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+DRIVE_API = "https://www.googleapis.com/drive/v3"
+SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 APPROVED_TOOLS = frozenset(
-    {"google_drive_search_files", "google_drive_get_file", "google_drive_download_file"}
+    {"google_drive_search_files", "google_drive_get_file", "google_drive_read_file"}
 )
-SETUP = "Configure PIPEDREAM_CLIENT_ID, PIPEDREAM_CLIENT_SECRET, PIPEDREAM_PROJECT_ID and PIPEDREAM_ENVIRONMENT on the API and worker, then restart both. See docs/google-drive-connections.md."
-
-
-def external_user(workspace):
-    return "axelyn_" + workspace
-
-
-def response_payload(result):
-    if result.is_error:
-        raise StudioError(
-            "connection_tool_error",
-            "Google Drive could not complete this read. Check the account connection and file permissions.",
-            retryable=True,
-        )
-    payload = result.structured_content
-    if payload is None:
-        blocks = [block.text for block in result.content if block.type == "text"]
-        if len(blocks) != 1:
-            raise StudioError(
-                "invalid_connection_output",
-                "The Drive MCP server returned an unsupported response.",
-            )
-        try:
-            payload = json.loads(blocks[0])
-        except (ValueError, TypeError) as exc:
-            raise StudioError(
-                "invalid_connection_output",
-                "The Drive MCP server did not return structured file data.",
-            ) from exc
-    # Pipedream action responses wrap $return_value in exports; SDK versions may
-    # expose that value directly or under result/data. Never evaluate returned text.
-    for _ in range(4):
-        if not isinstance(payload, dict):
-            break
-        if (
-            "exports" in payload
-            and isinstance(payload["exports"], dict)
-            and "$return_value" in payload["exports"]
-        ):
-            payload = payload["exports"]["$return_value"]
-        elif "$return_value" in payload:
-            payload = payload["$return_value"]
-        elif len(payload) == 1 and ("result" in payload or "data" in payload):
-            payload = payload.get("result", payload.get("data"))
-        else:
-            break
-    return payload
+SETUP = "Google Drive is not enabled yet. The app owner must configure Google authorization before accounts can connect."
 
 
 class LimitedStream(httpx2.AsyncByteStream):
-    def __init__(self, stream):
-        self.stream = stream
+    def __init__(self, stream, maximum=512_000):
+        self.stream, self.maximum = stream, maximum
 
     async def __aiter__(self):
         count = 0
         async for chunk in self.stream:
             count += len(chunk)
-            if count > 1_000_000:
+            if count > self.maximum:
                 raise StudioError(
                     "connection_response_too_large",
-                    "Drive returned too much data. Choose a smaller file.",
+                    "Google Drive returned too much data. Choose a smaller file.",
                 )
             yield chunk
 
@@ -89,234 +50,347 @@ class LimitedStream(httpx2.AsyncByteStream):
 
 
 async def bound_response(response):
-    if response.status_code >= 300 and response.status_code != 405:
+    if 300 <= response.status_code < 400:
         raise StudioError(
             "connection_unavailable",
-            "The Drive MCP connection was rejected. Refresh or reconnect the account.",
-            retryable=True,
+            "Google returned an unexpected redirect. No redirect was followed.",
         )
     response.stream = LimitedStream(response.stream)
+
+
+def response_payload(result):
+    if result.is_error:
+        raise StudioError(
+            "connection_tool_error",
+            "Google Drive could not complete this read. Check the account and file permissions.",
+        )
+    payload = result.structured_content
+    if payload is None:
+        blocks = [block.text for block in result.content if block.type == "text"]
+        if len(blocks) != 1:
+            raise StudioError(
+                "invalid_connection_output", "The Drive tool returned an unsupported response."
+            )
+        try:
+            payload = json.loads(blocks[0])
+        except (ValueError, TypeError) as exc:
+            raise StudioError(
+                "invalid_connection_output", "The Drive tool did not return structured data."
+            ) from exc
+    if isinstance(payload, dict) and set(payload) == {"error"}:
+        error = payload["error"]
+        raise StudioError(error["code"], error["message"], retryable=error["retryable"])
+    return payload
 
 
 class MCPTools:
     def __init__(self, session, tools, before_call):
         self.session, self.before_call = session, before_call
-        self.tools = {}
-        for tool in tools:
-            canonical = tool.name.replace("-", "_")
-            if canonical in APPROVED_TOOLS:
-                if canonical in self.tools:
-                    raise StudioError(
-                        "connection_schema_changed",
-                        "Drive exposed ambiguous tool names. Ask the administrator to review the connector.",
-                    )
-                self.tools[canonical] = tool
+        self.tools = {tool.name: tool for tool in tools if tool.name in APPROVED_TOOLS}
 
     async def call(self, name, arguments):
         if name not in APPROVED_TOOLS:
-            raise StudioError(
-                "permission_denied", "This MCP tool is not approved for Google Drive."
-            )
+            raise StudioError("permission_denied", "This Drive tool is not approved.")
         tool = self.tools.get(name)
         if not tool:
             raise StudioError(
-                "connection_schema_changed",
-                "A required Drive read tool is unavailable. Ask the administrator to check the MCP connector.",
+                "connection_schema_changed", "A required Drive read tool is unavailable."
             )
         try:
-            # No remote JSON Schema references: validating a server's schema must
-            # never initiate another network request.
-            serialized = json.dumps(tool.input_schema)
-            if re.search(r'"\$(?:ref|dynamicRef)"\s*:\s*"(?!#)', serialized):
-                raise SchemaError("Remote schema references are not permitted")
+            if re.search(r'"\$(?:ref|dynamicRef)"\s*:\s*"(?!#)', json.dumps(tool.input_schema)):
+                raise SchemaError("External references are not permitted")
             Draft202012Validator.check_schema(tool.input_schema)
             Draft202012Validator(tool.input_schema).validate(arguments)
         except (SchemaError, ValidationError) as exc:
             raise StudioError(
                 "connection_schema_changed",
-                "The Drive tool's input schema changed. No tool was called; ask the administrator to review the connector.",
+                "The Drive tool input did not match its approved schema. No tool was called.",
             ) from exc
         self.before_call()
-        result = await self.session.call_tool(tool.name, arguments)
-        return response_payload(result)
+        return response_payload(await self.session.call_tool(name, arguments))
 
 
-class PipedreamProvider:
-    def __init__(self, settings):
-        self.settings = settings
+def validate_token(token, previous=None):
+    if not isinstance(token, dict):
+        raise StudioError(
+            "authorization_failed", "Google did not return valid authorization credentials."
+        )
+    refresh = token.get("refresh_token") or (previous or {}).get("refresh_token")
+    access = token.get("access_token")
+    expiry = token.get("expires_at")
+    scopes = set(str(token.get("scope", SCOPE)).split())
+    if (
+        not isinstance(access, str)
+        or not 1 <= len(access) <= 8192
+        or not isinstance(refresh, str)
+        or not 1 <= len(refresh) <= 8192
+        or str(token.get("token_type", "Bearer")).lower() != "bearer"
+        or scopes != {SCOPE}
+        or type(expiry) not in {int, float}
+        or not math.isfinite(expiry)
+        or not time.time() < expiry <= time.time() + 86400
+    ):
+        raise StudioError(
+            "authorization_failed",
+            "Google did not grant ongoing, read-only Drive access. Click Connect again and approve Drive access.",
+        )
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+        "expires_at": expiry,
+        "scope": SCOPE,
+        "token_type": "Bearer",
+    }
+
+
+class GoogleDriveProvider:
+    def __init__(self, settings, store):
+        self.settings, self.store = settings, store
 
     def require_configuration(self):
         if not self.settings.connections_configured:
-            raise StudioError("configuration_error", SETUP, retryable=True)
+            raise StudioError("configuration_error", SETUP)
 
-    async def request(self, method, path, *, token=None, **kwargs):
+    def oauth_client(self, **kwargs):
         self.require_configuration()
-        headers = {"x-pd-environment": self.settings.pipedream_environment}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        try:
-            async with httpx.AsyncClient(
-                timeout=15, trust_env=False, follow_redirects=False
-            ) as client:
-                async with client.stream(method, API + path, headers=headers, **kwargs) as response:
-                    if response.status_code >= 300:
-                        raise StudioError(
-                            "connection_provider_error",
-                            "Pipedream rejected the connection request. Check project credentials, environment, account authorization and service limits.",
-                            retryable=True,
-                        )
-                    body = bytearray()
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        body.extend(chunk)
-                        if len(body) > 512_000:
-                            raise StudioError(
-                                "connection_response_too_large",
-                                "The connection provider returned too much data.",
-                            )
-                    return json.loads(body) if body else None
-        except httpx.HTTPError as exc:
-            raise StudioError(
-                "connection_unavailable",
-                "The connection provider could not be reached. Try again later.",
-                retryable=True,
-            ) from exc
-        except ValueError as exc:
-            raise StudioError(
-                "invalid_connection_output", "The connection provider returned an invalid response."
-            ) from exc
-
-    async def access_token(self):
-        payload = await self.request(
-            "POST",
-            "/oauth/token",
-            json={
-                "grant_type": "client_credentials",
-                "client_id": self.settings.pipedream_client_id,
-                "client_secret": self.settings.pipedream_client_secret,
-                "scope": "connect:accounts:read connect:accounts:write connect:apps:* connect:actions:* connect:tokens:create",
-            },
-        )
-        token = payload.get("access_token") if isinstance(payload, dict) else None
-        if not isinstance(token, str) or not token or len(token) > 8192:
-            raise StudioError(
-                "invalid_connection_output", "Pipedream did not issue a valid access token."
-            )
-        return token
-
-    async def connect_link(self, workspace):
-        token = await self.access_token()
-        body = {
-            "external_user_id": external_user(workspace),
-            "app_id": APP,
-            "expires_in": 600,
-            "scope": "connect:accounts:read connect:accounts:write connect:apps:*",
-            "allowed_origins": self.settings.cors_origins,
-        }
-        if self.settings.pipedream_drive_oauth_app_id:
-            body["oauth_app_id"] = self.settings.pipedream_drive_oauth_app_id
-        payload = await self.request(
-            "POST", f"/connect/{self.settings.pipedream_project_id}/tokens", token=token, json=body
-        )
-        url = urlsplit(payload.get("connect_link_url", "") if isinstance(payload, dict) else "")
-        host = url.hostname or ""
-        if (
-            url.scheme != "https"
-            or not (host == "pipedream.com" or host.endswith(".pipedream.com"))
-            or url.username
-            or url.password
-            or url.port not in {None, 443}
-            or url.path != "/_static/connect.html"
-        ):
-            raise StudioError(
-                "invalid_connection_output", "Pipedream returned an unexpected authorization link."
-            )
-        query = dict(parse_qsl(url.query))
-        if not re.fullmatch(r"ctok_[0-9a-f]{32}", query.get("token", "")):
-            raise StudioError(
-                "invalid_connection_output", "Pipedream returned an invalid connection link."
-            )
-        query = {"token": query["token"], "connectLink": "true", "app": APP}
-        return {
-            "url": urlunsplit(("https", url.netloc, url.path, urlencode(query), "")),
-            "expires_in": 600,
-        }
-
-    async def accounts(self, workspace, token=None):
-        token = token or await self.access_token()
-        payload = await self.request(
-            "GET",
-            f"/connect/{self.settings.pipedream_project_id}/users/{external_user(workspace)}/accounts",
-            token=token,
-            params={"app": APP, "include_credentials": "false"},
-        )
-        if not isinstance(payload, list) or len(payload) > 100:
-            raise StudioError(
-                "invalid_connection_output", "Pipedream returned an invalid account list."
-            )
-        accounts = []
-        for row in payload:
-            if (
-                not isinstance(row, dict)
-                or not isinstance(row.get("app"), dict)
-                or row["app"].get("name_slug") != APP
-            ):
-                continue
-            if not re.fullmatch(r"apn_[a-zA-Z0-9]+", str(row.get("id", ""))):
-                continue
-            accounts.append(
-                {
-                    "id": row["id"],
-                    "name": str(row.get("name") or "Google Drive account")[:160],
-                    "healthy": row.get("healthy") is True,
-                    "dead": row.get("dead") is True,
-                }
-            )
-        return accounts
-
-    async def delete_account(self, workspace, account_id):
-        token = await self.access_token()
-        # Verify ownership from a user-scoped listing before account-level deletion.
-        if any(account["id"] == account_id for account in await self.accounts(workspace, token)):
-            await self.request(
-                "DELETE",
-                f"/connect/{self.settings.pipedream_project_id}/accounts/{account_id}",
-                token=token,
-            )
-
-    @asynccontextmanager
-    async def tools(self, workspace, account_id, before_call=lambda: None):
-        token = await self.access_token()
-        accounts = await self.accounts(workspace, token)
-        if not any(
-            row["id"] == account_id and row["healthy"] and not row["dead"] for row in accounts
-        ):
-            raise StudioError(
-                "connection_revoked",
-                "The Google Drive account is no longer authorized. Open Connections and reconnect.",
-            )
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "x-pd-project-id": self.settings.pipedream_project_id,
-            "x-pd-environment": self.settings.pipedream_environment,
-            "x-pd-external-user-id": external_user(workspace),
-            "x-pd-app-slug": APP,
-            "x-pd-account-id": account_id,
-            "x-pd-registry": "public",
-        }
-        async with httpx2.AsyncClient(
-            headers=headers,
-            timeout=20,
+        return AsyncOAuth2Client(
+            self.settings.google_drive_client_id,
+            self.settings.google_drive_client_secret,
+            token_endpoint_auth_method="client_secret_post",
+            scope=SCOPE,
+            redirect_uri=self.settings.google_drive_redirect_uri,
+            code_challenge_method="S256",
+            timeout=15,
             trust_env=False,
             follow_redirects=False,
             event_hooks={"response": [bound_response]},
+            **kwargs,
+        )
+
+    async def start(self, workspace):
+        state, browser, verifier = (
+            secrets.token_urlsafe(32),
+            secrets.token_urlsafe(32),
+            secrets.token_urlsafe(64),
+        )
+        async with self.oauth_client() as client:
+            url, _ = client.create_authorization_url(
+                AUTH_URL,
+                state=state,
+                code_verifier=verifier,
+                access_type="offline",
+                prompt="consent select_account",
+            )
+        flow_id = self.store.begin_auth(workspace, state, browser, verifier)
+        return {"url": url, "flow_id": flow_id, "expires_in": 600}, browser
+
+    async def exchange(self, code, state, verifier):
+        try:
+            async with self.oauth_client(state=state) as client:
+                response = (
+                    self.settings.google_drive_redirect_uri
+                    + "?"
+                    + urlencode({"code": code, "state": state})
+                )
+                token = await client.fetch_token(
+                    TOKEN_URL,
+                    authorization_response=response,
+                    code_verifier=verifier,
+                    grant_type="authorization_code",
+                )
+            return validate_token(token)
+        except (OAuthError, OAuth2Error) as exc:
+            raise StudioError(
+                "authorization_failed",
+                "Google authorization failed. Return to Axelyn and click Connect again.",
+            ) from exc
+
+    async def access_token(self, workspace, connection_id):
+        self.require_configuration()
+        token, revision = self.store.tokens(workspace, connection_id)
+        if token["expires_at"] <= time.time() + 60:
+            try:
+                async with self.oauth_client() as client:
+                    refreshed = await client.refresh_token(
+                        TOKEN_URL, refresh_token=token["refresh_token"]
+                    )
+                token = self.store.update_tokens(
+                    workspace, connection_id, validate_token(refreshed, token), revision
+                )
+            except (OAuthError, OAuth2Error) as exc:
+                self.store.mark_reconnect(workspace, connection_id)
+                raise StudioError(
+                    "connection_revoked",
+                    "Google Drive authorization expired or was revoked. Click Connect to authorize it again.",
+                ) from exc
+        self.store.owned(workspace, connection_id)
+        return token["access_token"]
+
+    async def request(self, token, path, *, params=None, text=False):
+        maximum = 128_000 if text else 512_000
+        async with httpx2.AsyncClient(
+            timeout=15, trust_env=False, follow_redirects=False
         ) as client:
-            async with streamable_http_client(
-                MCP_URL, http_client=client, max_sse_event_size=1_000_000
-            ) as (read, write):
-                async with ClientSession(read, write, read_timeout_seconds=20) as session:
-                    await session.initialize()
-                    listing = await session.list_tools()
-                    yield MCPTools(session, listing.tools, before_call)
+            async with client.stream(
+                "GET", DRIVE_API + path, headers={"Authorization": f"Bearer {token}"}, params=params
+            ) as response:
+                if response.status_code == 401:
+                    raise StudioError(
+                        "connection_revoked",
+                        "Google Drive access was revoked. Click Connect again.",
+                    )
+                if response.status_code == 404:
+                    raise StudioError(
+                        "drive_file_unavailable",
+                        "This Drive file was deleted or is no longer shared with your account.",
+                    )
+                if response.status_code != 200:
+                    raise StudioError(
+                        "connection_provider_error",
+                        "Google Drive could not complete this read. Check account permissions and the app's Drive API configuration.",
+                        retryable=response.status_code == 429 or response.status_code >= 500,
+                    )
+                data = bytearray()
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    data.extend(chunk)
+                    if len(data) > maximum:
+                        raise StudioError(
+                            "connection_response_too_large",
+                            "This Drive file is too large. Choose a text document under 128 KB.",
+                        )
+        if text:
+            try:
+                return data.decode("utf-8-sig")
+            except UnicodeError as exc:
+                raise StudioError(
+                    "unsupported_drive_content", "Choose a Google Doc or UTF-8 text file."
+                ) from exc
+        try:
+            return json.loads(data)
+        except ValueError as exc:
+            raise StudioError(
+                "invalid_connection_output", "Google Drive returned invalid data."
+            ) from exc
+
+    async def account(self, token):
+        payload = await self.request(
+            token["access_token"],
+            "/about",
+            params={"fields": "user(displayName,emailAddress,permissionId)"},
+        )
+        user = payload.get("user", {}) if isinstance(payload, dict) else {}
+        identifier = user.get("permissionId", "")
+        if not isinstance(identifier, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{5,200}", identifier):
+            raise StudioError(
+                "invalid_connection_output", "Google Drive did not identify the authorized account."
+            )
+        return {
+            "id": identifier,
+            "name": str(
+                user.get("emailAddress") or user.get("displayName") or "Google Drive account"
+            )[:160],
+        }
+
+    async def revoke(self, token):
+        async with httpx2.AsyncClient(
+            timeout=10, trust_env=False, follow_redirects=False
+        ) as client:
+            async with client.stream(
+                "POST", REVOKE_URL, data={"token": token["refresh_token"]}
+            ) as response:
+                # An already-revoked token is equivalent to successful revocation.
+                if response.status_code not in {200, 400}:
+                    raise StudioError(
+                        "connection_unavailable", "Google revocation could not be confirmed."
+                    )
+
+    @asynccontextmanager
+    async def tools(self, workspace, connection_id, before_call=lambda: None):
+        self.require_configuration()
+        self.store.owned(workspace, connection_id)
+        server = MCPServer("Axelyn Google Drive", log_level="ERROR")
+
+        async def run(operation):
+            try:
+                token = await self.access_token(workspace, connection_id)
+                result = await operation(token)
+                self.store.owned(workspace, connection_id)
+                return result
+            except StudioError as exc:
+                if exc.code == "connection_revoked":
+                    self.store.mark_reconnect(workspace, connection_id)
+                return {
+                    "error": {"code": exc.code, "message": exc.message, "retryable": exc.retryable}
+                }
+            except Exception:
+                # SDK error logs must not include tokens or provider response bodies.
+                return {
+                    "error": {
+                        "code": "connection_unavailable",
+                        "message": "Google Drive could not be reached. Try again later.",
+                        "retryable": True,
+                    }
+                }
+
+        @server.tool(name="google_drive_search_files")
+        async def search_files(name: str) -> dict:
+            literal = name.replace("\\", "\\\\").replace("'", "\\'")
+            query = "trashed = false and mimeType != 'application/vnd.google-apps.folder'"
+            if literal:
+                query += f" and name contains '{literal}'"
+            return await run(
+                lambda token: self.request(
+                    token,
+                    "/files",
+                    params={
+                        "q": query,
+                        "pageSize": 20,
+                        "fields": "files(id,name,mimeType,modifiedTime,trashed),nextPageToken",
+                        "corpora": "user",
+                    },
+                )
+            )
+
+        @server.tool(name="google_drive_get_file")
+        async def get_file(file_id: str) -> dict:
+            if not re.fullmatch(r"[a-zA-Z0-9_-]{5,180}", file_id):
+                raise ValueError("Invalid file identifier")
+            return await run(
+                lambda token: self.request(
+                    token,
+                    f"/files/{file_id}",
+                    params={"fields": "id,name,mimeType,modifiedTime,size,trashed"},
+                )
+            )
+
+        @server.tool(name="google_drive_read_file")
+        async def read_file(file_id: str, mime_type: str) -> dict:
+            if not re.fullmatch(r"[a-zA-Z0-9_-]{5,180}", file_id) or mime_type not in {
+                "application/vnd.google-apps.document",
+                "text/plain",
+                "text/markdown",
+                "text/csv",
+            }:
+                raise ValueError("Unsupported Drive text file")
+
+            async def content(token):
+                path = f"/files/{file_id}"
+                params = {"alt": "media"}
+                if mime_type == "application/vnd.google-apps.document":
+                    path += "/export"
+                    params = {"mimeType": "text/plain"}
+                return {
+                    "fileId": file_id,
+                    "content": await self.request(token, path, params=params, text=True),
+                }
+
+            return await run(content)
+
+        async with Client(
+            server, raise_exceptions=True, mode="legacy", read_timeout_seconds=20
+        ) as client:
+            listing = await client.list_tools()
+            yield MCPTools(client, listing.tools, before_call)
 
 
 @asynccontextmanager
@@ -329,7 +403,7 @@ async def connection_errors(timeout=30):
     except TimeoutError as exc:
         raise StudioError(
             "connection_timeout",
-            "Google Drive took too long to respond. Try again with a smaller file.",
+            "Google Drive took too long to respond. Try again.",
             retryable=True,
         ) from exc
     except Exception as exc:
@@ -340,10 +414,8 @@ async def connection_errors(timeout=30):
                 raise cause from None
             if isinstance(cause, BaseExceptionGroup):
                 pending.extend(cause.exceptions)
-        # SDK exception groups may contain provider bodies and authorization headers.
-        # Return a fixed message and never log the original exception text.
         raise StudioError(
             "connection_unavailable",
-            "Google Drive could not complete the request. Refresh the connection and try again.",
+            "Google Drive could not complete the request. Try reconnecting your account.",
             retryable=True,
         ) from exc

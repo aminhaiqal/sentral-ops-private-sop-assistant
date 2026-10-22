@@ -90,7 +90,9 @@ timed-out or interrupted requests retain the reservation and are marked unreport
 
 No new service, ORM, graph engine or queue is introduced. `httpx`, already installed
 with the AI SDK, is declared as a production dependency. Optional Drive connections
-add the official `mcp` client, its `httpx2` transport and `jsonschema` validation.
+add the official `mcp` SDK, its `httpx2` transport, `jsonschema` validation,
+Authlib for direct Google OAuth and cryptography for encrypted token storage.
+Drive tools run in-process over the stable Google API.
 Playwright is a development-only dependency for repeatable browser verification.
 
 - React uses the existing authenticated API client and Clerk session boundary.

@@ -1,91 +1,165 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  ArrowUpRight,
-  Check,
-  HardDrive,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Unplug,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUpRight, Check, HardDrive, Loader2, ShieldCheck } from "lucide-react";
 import type { ApiClient } from "../api";
 import type { StudioCatalog } from "../studio/types";
 import type { ConnectionsCatalog } from "./types";
 import DriveFiles from "./DriveFiles";
+import {
+  googleAuthorizationUrl,
+  pendingGoogleAuth,
+  saveGoogleAuth,
+  type PendingGoogleAuth,
+} from "./googleAuth";
 import "./connections.css";
 
 const message = (error: unknown) =>
-  error instanceof Error ? error.message : "Unable to load connections.";
+  error instanceof Error ? error.message : "Unable to connect Google Drive.";
 const labels = {
   connected: "Connected",
   reconnect_required: "Reconnect required",
   disconnected: "Disconnected",
 };
+function storage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
-export default function Connections({ api, catalog }: { api: ApiClient; catalog: StudioCatalog }) {
+export default function Connections({ api }: { api: ApiClient; catalog?: StudioCatalog }) {
   const [data, setData] = useState<ConnectionsCatalog | null>(null),
     [error, setError] = useState("");
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
-  const [link, setLink] = useState(""),
-    [selected, setSelected] = useState("");
-  const [confirm, setConfirm] = useState<string | null>(null);
-  const load = useCallback(async () => {
-    setData(await api.connections());
-    window.dispatchEvent(new Event("axelyn:connections-changed"));
-  }, [api]);
+  const [pending, setPending] = useState<PendingGoogleAuth | null>(null),
+    [fallback, setFallback] = useState("");
+  const [selected, setSelected] = useState(""),
+    [confirm, setConfirm] = useState<string | null>(null);
+  const popup = useRef<Window | null>(null),
+    alive = useRef(true);
   useEffect(() => {
-    let alive = true;
+    alive.current = true;
     void api
       .connections()
       .then((value) => {
-        if (alive) setData(value);
+        if (alive.current) {
+          setData(value);
+          setPending(pendingGoogleAuth(storage(), value.account_scope));
+        }
       })
       .catch((err) => {
-        if (alive) setError(message(err));
+        if (alive.current) setError(message(err));
       });
     return () => {
-      alive = false;
+      alive.current = false;
     };
   }, [api]);
-  async function refresh() {
-    setBusy(true);
-    setError("");
-    try {
-      await api.refreshConnections();
-      await load();
-      setLink("");
-      setNotice("Connection status refreshed.");
-    } catch (err) {
-      setError(message(err));
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    if (!pending || !data) return;
+    let stopped = false,
+      fetching = false;
+    const scope = data.account_scope;
+    function clear() {
+      saveGoogleAuth(storage(), scope, null);
+      setPending(null);
+      setFallback("");
+      popup.current?.close();
+      popup.current = null;
     }
-  }
+    async function poll() {
+      if (stopped || fetching) return;
+      if (Date.now() >= pending!.expires_at) {
+        clear();
+        setError("Google sign-in expired. Click Connect to try again.");
+        return;
+      }
+      fetching = true;
+      try {
+        const flow = await api.googleDriveAuthStatus(pending!.flow_id);
+        if (stopped) return;
+        if (flow.status === "ready" || flow.status === "complete") {
+          const connection = await api.completeGoogleDriveAuth(pending!.flow_id);
+          const catalog = await api.connections();
+          if (stopped) return;
+          clear();
+          setData(catalog);
+          setSelected(connection.status === "connected" ? connection.id : "");
+          setNotice(
+            connection.status === "connected"
+              ? "Google Drive connected."
+              : "This account is disconnected. Click Connect to authorize it again.",
+          );
+          window.dispatchEvent(new Event("axelyn:connections-changed"));
+        } else if (["failed", "expired"].includes(flow.status)) {
+          clear();
+          setError(
+            flow.error === "authorization_cancelled"
+              ? "Google sign-in was cancelled. Click Connect when you’re ready."
+              : "Google Drive wasn’t connected. Click Connect to try again.",
+          );
+        }
+      } catch (err) {
+        if (!stopped) {
+          clear();
+          setError(message(err));
+        }
+      } finally {
+        fetching = false;
+      }
+    }
+    void poll();
+    const timer = setInterval(() => void poll(), 1500);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [api, pending, data?.account_scope]);
+
   async function connect() {
-    // Open during the click so popup blockers do not discard the consent flow.
-    const popup = window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
+    if (!data || busy || pending) return;
+    popup.current = window.open("about:blank", "_blank");
+    if (popup.current) popup.current.opener = null;
     setBusy(true);
     setError("");
-    setLink("");
+    setNotice("");
+    setFallback("");
     try {
       const result = await api.connectGoogleDrive();
-      const url = new URL(result.url);
+      const url = googleAuthorizationUrl(result.url);
       if (
-        url.protocol !== "https:" ||
-        !(url.hostname === "pipedream.com" || url.hostname.endsWith(".pipedream.com")) ||
-        url.username ||
-        url.password
+        !/^[a-f0-9]{32}$/.test(result.flow_id) ||
+        result.expires_in < 1 ||
+        result.expires_in > 600
       )
-        throw Error("The authorization link is invalid.");
-      setLink(result.url);
-      if (popup && !popup.closed) popup.location.href = result.url;
-      setNotice(
-        "Finish connecting in the Google authorization tab, then refresh accounts here. The link expires in 10 minutes.",
-      );
+        throw new Error("Invalid Google sign-in attempt.");
+      const attempt = {
+        flow_id: result.flow_id,
+        expires_at: Date.now() + result.expires_in * 1000,
+      };
+      saveGoogleAuth(storage(), data.account_scope, attempt);
+      if (!alive.current) return;
+      setPending(attempt);
+      if (popup.current && !popup.current.closed) popup.current.location.href = url;
+      else setFallback(url);
     } catch (err) {
-      popup?.close();
+      popup.current?.close();
+      if (alive.current) setError(message(err));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function cancel() {
+    if (!pending || !data) return;
+    setBusy(true);
+    try {
+      await api.cancelGoogleDriveAuth(pending.flow_id);
+      saveGoogleAuth(storage(), data.account_scope, null);
+      setPending(null);
+      setFallback("");
+      popup.current?.close();
+      setNotice("Google sign-in cancelled.");
+    } catch (err) {
       setError(message(err));
     } finally {
       setBusy(false);
@@ -99,20 +173,8 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
       setNotice(result.message);
       if (selected === id) setSelected("");
       setConfirm(null);
-      await load();
-    } catch (err) {
-      setError(message(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function reconnect(id: string) {
-    setBusy(true);
-    setError("");
-    try {
-      const result = await api.reconnectConnection(id);
-      setNotice(result.message);
-      await load();
+      setData(await api.connections());
+      window.dispatchEvent(new Event("axelyn:connections-changed"));
     } catch (err) {
       setError(message(err));
     } finally {
@@ -126,9 +188,8 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
     <div className="connections-page">
       <div className="studio-page-heading">
         <div>
-          <span className="studio-eyebrow">WORKSPACE ACCESS</span>
           <h1>Connections</h1>
-          <p>Connect an account, then choose what each bot can read.</p>
+          <p>Connect the apps your bots work with.</p>
         </div>
       </div>
       {error && (
@@ -152,64 +213,52 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
               </span>
               <div>
                 <h2 id="drive-provider-title">Google Drive</h2>
-                <p>Find documents and give your bots selected background material.</p>
+                <p>Let your bots read the documents you choose.</p>
               </div>
-              <span className="connection-mode">Search & read</span>
+              <button
+                className="button primary"
+                aria-label="Connect Google Drive"
+                disabled={!data.configured || busy || !!pending}
+                onClick={() => void connect()}
+              >
+                {busy || pending ? <Loader2 size={15} className="spin" /> : null}
+                {pending ? "Connecting…" : "Connect"}
+              </button>
             </div>
             <div className="connection-access-note">
-              <ShieldCheck size={17} />
+              <ShieldCheck size={16} />
               <p>
-                Axelyn enables reading only. Each bot gets the files you select. Review Google’s
-                consent screen for the account permissions requested by Pipedream.
+                You approve access with Google. Bots can read selected files; they cannot change or
+                delete them.
               </p>
             </div>
-            {!data.configured ? (
-              <div className="connection-setup">
-                <h3>Administrator setup required</h3>
-                <p>
-                  Add your Pipedream Connect project credentials to the API and worker. Google
-                  tokens stay with Pipedream.
-                </p>
-                <ul>
-                  <li>PIPEDREAM_CLIENT_ID</li>
-                  <li>PIPEDREAM_CLIENT_SECRET</li>
-                  <li>PIPEDREAM_PROJECT_ID</li>
-                  <li>PIPEDREAM_ENVIRONMENT</li>
-                </ul>
-                <a
-                  href="https://pipedream.com/docs/connect/mcp/developers"
-                  target="_blank"
-                  rel="noopener noreferrer"
+            {!data.configured && (
+              <p className="connection-not-ready">
+                Google Drive setup is not finished yet. The app owner needs to enable Google
+                authorization.
+              </p>
+            )}
+            {pending && (
+              <div className="connection-pending" role="status">
+                <span>Finish signing in with Google. This page will update automatically.</span>
+                <button
+                  className="studio-text-button"
+                  disabled={busy}
+                  onClick={() => void cancel()}
                 >
-                  Open setup guide <ArrowUpRight size={14} />
-                </a>
-              </div>
-            ) : (
-              <div className="connection-provider-actions">
-                <button className="button primary" disabled={busy} onClick={() => void connect()}>
-                  {busy ? <Loader2 size={15} className="spin" /> : <HardDrive size={15} />}Connect
-                  Google Drive
+                  Cancel
                 </button>
-                <button className="button secondary" disabled={busy} onClick={() => void refresh()}>
-                  <RefreshCw size={14} />
-                  Refresh accounts
-                </button>
-                <small>
-                  {data.environment === "development"
-                    ? "Development connections"
-                    : "Production connections"}
-                </small>
               </div>
             )}
-            {link && (
+            {fallback && (
               <a
                 className="connection-consent-link"
-                href={link}
+                href={fallback}
                 target="_blank"
                 rel="noopener noreferrer"
                 referrerPolicy="no-referrer"
               >
-                Continue Google Drive authorization <ArrowUpRight size={14} />
+                Continue with Google <ArrowUpRight size={14} />
               </a>
             )}
             <div className="connection-account-list">
@@ -226,60 +275,56 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
                     >
                       {labels[connection.status]}
                     </span>
-                    <small>Checked {new Date(connection.checked_at).toLocaleString()}</small>
                   </div>
                   <div className="connection-account-actions">
-                    {connection.status !== "connected" && (
-                      <button
-                        className="button secondary"
-                        disabled={busy}
-                        onClick={() => void reconnect(connection.id)}
-                      >
-                        Reconnect
-                      </button>
-                    )}
-                    {connection.status === "connected" && (
-                      <button
-                        className="button secondary"
-                        onClick={() => setSelected(connection.id)}
-                      >
-                        {selected === connection.id ? <Check size={14} /> : null}Browse files
-                      </button>
-                    )}
-                    {confirm === connection.id ? (
+                    {connection.status === "connected" ? (
                       <>
-                        <span>Stop this account’s access?</span>
                         <button
                           className="button secondary"
-                          disabled={busy}
-                          onClick={() => setConfirm(null)}
+                          onClick={() => setSelected(connection.id)}
                         >
-                          Keep connected
+                          {selected === connection.id ? <Check size={14} /> : null}Browse files
                         </button>
-                        <button
-                          className="button secondary"
-                          disabled={busy}
-                          onClick={() => void disconnect(connection.id)}
-                        >
-                          Confirm disconnect
-                        </button>
+                        {confirm === connection.id ? (
+                          <>
+                            <span>Disconnect this account?</span>
+                            <button
+                              className="studio-text-button"
+                              disabled={busy}
+                              onClick={() => setConfirm(null)}
+                            >
+                              Keep connected
+                            </button>
+                            <button
+                              className="button secondary"
+                              disabled={busy}
+                              onClick={() => void disconnect(connection.id)}
+                            >
+                              Confirm disconnect
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="studio-text-button"
+                            disabled={busy}
+                            onClick={() => setConfirm(connection.id)}
+                          >
+                            Disconnect
+                          </button>
+                        )}
                       </>
                     ) : (
                       <button
                         className="studio-text-button"
-                        disabled={busy}
-                        onClick={() => setConfirm(connection.id)}
+                        disabled={busy || !!pending || !data.configured}
+                        onClick={() => void connect()}
                       >
-                        <Unplug size={13} />
-                        {connection.status === "disconnected" ? "Retry removal" : "Disconnect"}
+                        Reconnect
                       </button>
                     )}
                   </div>
                 </div>
               ))}
-              {data.configured && !data.connections.length && (
-                <p className="connections-loading">No Google Drive accounts connected yet.</p>
-              )}
             </div>
           </section>
           {active && (
@@ -288,22 +333,9 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
               <DriveFiles key={active.id} api={api} connectionId={active.id} />
             </section>
           )}
-          <section className="connections-built-in">
-            <h2>Bot runtime connections</h2>
-            {catalog.tools.map((tool) => (
-              <div key={tool.id}>
-                <strong>{tool.name}</strong>
-                <span className={tool.configured ? "connection-ready" : "connection-missing"}>
-                  {tool.configured ? "Ready" : "Setup required"}
-                </span>
-                <p>{tool.setup}</p>
-              </div>
-            ))}
-          </section>
-          {data.activity.length > 0 && (
-            <section className="connections-activity">
-              <h2>Recent connection activity</h2>
-              <p>File contents, credentials and authorization links are excluded from this log.</p>
+          {data.activity.some((event) => event.status !== "started") && (
+            <details className="connections-activity">
+              <summary>Connection activity</summary>
               {data.activity
                 .filter((event) => event.status !== "started")
                 .slice(0, 10)
@@ -314,7 +346,7 @@ export default function Connections({ api, catalog }: { api: ApiClient; catalog:
                     <time>{new Date(event.created_at).toLocaleString()}</time>
                   </div>
                 ))}
-            </section>
+            </details>
           )}
         </>
       )}
