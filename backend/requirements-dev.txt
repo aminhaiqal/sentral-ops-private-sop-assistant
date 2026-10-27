@@ -10,13 +10,13 @@ anyio==4.15.1
     #   openai
     #   starlette
     #   watchfiles
-boto3==1.43.115
+boto3==1.43.118
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-botocore==1.43.115
+botocore==1.43.118
     # via
     #   boto3
     #   s3transfer
-certifi==2026.10.19
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -32,13 +32,13 @@ cryptography==50.0.2
     # via pyjwt
 distro==1.9.0
     # via openai
-fastapi==0.150.0
+fastapi==0.162.0
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-grpcio==1.84.0
+grpcio==1.84.1
     # via
     #   grpcio-tools
     #   qdrant-client
-grpcio-tools==1.84.0
+grpcio-tools==1.84.1
     # via qdrant-client
 h11==0.16.0
     # via
@@ -65,7 +65,7 @@ idna==3.20
     #   httpx
 iniconfig==2.3.1
     # via pytest
-jiter==0.17.0
+jiter==0.18.0
     # via openai
 jmespath==1.1.0
     # via
@@ -73,7 +73,7 @@ jmespath==1.1.0
     #   botocore
 numpy==2.5.4
     # via qdrant-client
-openai==1.109.1
+openai==3.37.0
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
 opentelemetry-api==1.45.1
     # via fastapi
@@ -81,11 +81,11 @@ packaging==26.3
     # via pytest
 pluggy==1.7.0
     # via pytest
-portalocker==2.10.1
+portalocker==4.4.1
     # via qdrant-client
 protobuf==7.36.2
     # via grpcio-tools
-pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydantic==2.14.1
     # via
@@ -96,17 +96,17 @@ pydantic==2.14.1
     #   qdrant-client
 pydantic-core==2.50.1
     # via pydantic
-pydantic-settings==2.16.0
+pydantic-settings==2.16.1
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
 pygments==2.21.0
     # via pytest
 pyjwt==2.15.1
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-pypdf==6.21.1
+pypdf==6.21.2
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-pytest==8.4.2
+pytest==9.1.1
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-python-dateutil==2.9.0.post0
+python-dateutil==3.0.0
     # via botocore
 python-dotenv==1.2.4
     # via
@@ -118,13 +118,13 @@ pywin32==312 ; sys_platform == 'win32'
     # via portalocker
 pyyaml==6.0.3
     # via uvicorn
-qdrant-client==1.13.3
+qdrant-client==1.20.0
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
-ruff==0.15.22
+ruff==0.17.2
     # via sentral-ops-private-sop-assistant-backend (backend/pyproject.toml)
 s3transfer==0.19.3
     # via boto3
-setuptools==84.2.0
+setuptools==84.2.1
     # via grpcio-tools
 six==1.17.0
     # via python-dateutil
