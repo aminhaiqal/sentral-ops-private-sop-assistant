@@ -13,9 +13,9 @@ dependencies = [
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
-    "openai>=1.57,<2",
+    "openai>=1.57,<4",
     "httpx>=0.28,<1",
-    "qdrant-client>=1.13,<1.14",
+    "qdrant-client>=1.13,<1.21",
     "boto3>=1.36,<2",
     "pypdf>=6.1,<7",
     "python-multipart>=0.0.20,<0.1",
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<9", "ruff>=0.15,<0.16"]
+dev = ["pytest>=8.3,<10", "ruff>=0.15,<0.18"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
